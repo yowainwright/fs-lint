@@ -19,12 +19,12 @@ tree. It also works in Git hooks and CI.
 path against `.fs-lintrc`, `fs-lint.json`, or `fs-lint.toml`.
 
 ```mermaid
-flowchart TD
-  Change["new file proposed"] --> Agent{"during agent dev?"}
+flowchart LR
+  Change["new file"] --> Agent{"agent session?"}
   Agent -- yes --> Allowlist{"matches newFiles.allow?"}
   Allowlist -- yes --> AgentAllowed["allow"]
-  Allowlist -- no --> AgentRejected["reject files/new"]
-  Agent -- no --> LintAllowed["allow normal lint"]
+  Allowlist -- no --> AgentRejected["reject"]
+  Agent -- no --> LintAllowed["allow"]
 ```
 
 Start with a small config:
