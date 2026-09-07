@@ -4,9 +4,14 @@
 #include "tomlc17.h"
 #include "yyjson.h"
 
+#include <errno.h>
+#include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <unistd.h>
 
 #define CLI_MAX_CONFIG_BYTES 1048576
 #define CLI_MAX_ALLOW_PATTERNS 4096
@@ -16,6 +21,12 @@ typedef struct {
   const char *name;
   bool seen;
 } expected_key;
+
+typedef struct {
+  char *data;
+  size_t length;
+  size_t capacity;
+} captured_output;
 
 static char *copy_string(const char *value) {
   const size_t size = strlen(value) + 1;
@@ -72,6 +83,126 @@ static bool is_toml_path(const char *path) { return has_suffix(path, ".toml"); }
 static bool fail(cli_config *config, const char *message) {
   snprintf(config->error, sizeof(config->error), "%s", message);
   return false;
+}
+
+static bool grow_output(captured_output *output, size_t needed, cli_config *config) {
+  size_t capacity = output->capacity == 0 ? 4096 : output->capacity;
+  while (capacity < needed) {
+    if (capacity > CLI_MAX_CONFIG_BYTES / 2) {
+      return fail(config, "configuration exceeds 1048576 bytes");
+    }
+    capacity *= 2;
+  }
+  char *data = realloc(output->data, capacity);
+  if (data == NULL) {
+    return fail(config, "could not allocate configuration");
+  }
+  output->data = data;
+  output->capacity = capacity;
+  return true;
+}
+
+static bool append_output(captured_output *output, const char *data, size_t length,
+                          cli_config *config) {
+  if (length > CLI_MAX_CONFIG_BYTES - output->length - 1) {
+    return fail(config, "configuration exceeds 1048576 bytes");
+  }
+  const size_t needed = output->length + length + 1;
+  const bool needs_allocation = output->data == NULL;
+  const bool needs_growth = needed > output->capacity;
+  if ((needs_allocation || needs_growth) && !grow_output(output, needed, config)) {
+    return false;
+  }
+  if (length > 0) {
+    memcpy(output->data + output->length, data, length);
+  }
+  output->length += length;
+  output->data[output->length] = '\0';
+  return true;
+}
+
+static bool read_git_descriptor(int descriptor, captured_output *output,
+                                cli_config *config) {
+  char buffer[4096];
+  ssize_t length;
+  while ((length = read(descriptor, buffer, sizeof(buffer))) > 0) {
+    if (!append_output(output, buffer, (size_t)length, config)) {
+      close(descriptor);
+      return false;
+    }
+  }
+  close(descriptor);
+  if (length < 0) {
+    return fail(config, "could not read staged configuration");
+  }
+  return true;
+}
+
+static void quiet_git_stderr(void) {
+  const int null = open("/dev/null", O_WRONLY);
+  if (null == -1) {
+    return;
+  }
+  dup2(null, STDERR_FILENO);
+  close(null);
+}
+
+static void execute_git_child(const char *root, const char *const arguments[],
+                              int output) {
+  const bool output_failed = dup2(output, STDOUT_FILENO) == -1;
+  close(output);
+  quiet_git_stderr();
+  const bool directory_failed = chdir(root) == -1;
+  if (output_failed || directory_failed) {
+    _exit(127);
+  }
+  execvp(arguments[0], (char *const *)arguments);
+  _exit(127);
+}
+
+static bool wait_for_git(pid_t identifier, int *status, cli_config *config) {
+  pid_t result;
+  do {
+    result = waitpid(identifier, status, 0);
+  } while (result == -1 && errno == EINTR);
+  if (result == -1) {
+    return fail(config, "could not wait for staged configuration");
+  }
+  return true;
+}
+
+static pid_t start_git(const char *root, const char *const arguments[], int output) {
+  const pid_t identifier = fork();
+  if (identifier == 0) {
+    execute_git_child(root, arguments, output);
+  }
+  return identifier;
+}
+
+static bool git_succeeded(pid_t identifier, cli_config *config) {
+  int status = 0;
+  const bool waited = wait_for_git(identifier, &status, config);
+  const bool exited = waited && WIFEXITED(status);
+  return exited && WEXITSTATUS(status) == 0;
+}
+
+static bool capture_git(const char *root, const char *const arguments[],
+                        captured_output *output, cli_config *config) {
+  int descriptors[2];
+  if (pipe(descriptors) == -1) {
+    return fail(config, "could not read staged configuration");
+  }
+  const pid_t identifier = start_git(root, arguments, descriptors[1]);
+  close(descriptors[1]);
+  if (identifier == -1) {
+    close(descriptors[0]);
+    return fail(config, "could not read staged configuration");
+  }
+  bool read_output = read_git_descriptor(descriptors[0], output, config);
+  if (read_output && output->data == NULL) {
+    read_output = append_output(output, "", 0, config);
+  }
+  return read_output && git_succeeded(identifier, config);
 }
 
 static bool measure_config(FILE *stream, size_t *length, cli_config *config) {
@@ -135,6 +266,16 @@ static yyjson_doc *load_document(const char *path, cli_config *config) {
   yyjson_read_err error;
   yyjson_doc *document = yyjson_read_opts(data, length, 0, NULL, &error);
   free(data);
+  if (document == NULL) {
+    fail(config, error.msg);
+  }
+  return document;
+}
+
+static yyjson_doc *load_document_data(const char *data, size_t length,
+                                      cli_config *config) {
+  yyjson_read_err error;
+  yyjson_doc *document = yyjson_read_opts((char *)data, length, 0, NULL, &error);
   if (document == NULL) {
     fail(config, error.msg);
   }
@@ -499,6 +640,48 @@ static bool parse_json_path(const char *path, cli_config *config) {
   return valid;
 }
 
+static bool parse_json_data(const char *data, size_t length, cli_config *config) {
+  yyjson_doc *document = load_document_data(data, length, config);
+  if (document == NULL) {
+    return false;
+  }
+  const bool valid = parse_json_document(document, config);
+  yyjson_doc_free(document);
+  return valid;
+}
+
+static bool parse_toml_data(const char *path, const char *data, size_t length,
+                            cli_config *config) {
+  toml_result_t document = toml_parse_named(data, (int)length, path);
+  if (!document.ok) {
+    const bool valid = fail(config, document.errmsg);
+    toml_free(document);
+    return valid;
+  }
+  bool valid = validate_toml_root_keys(document.toptab, config);
+  if (valid) {
+    valid = read_toml_version(document.toptab, config) &&
+            read_toml_new_files(document.toptab, config);
+  }
+  toml_free(document);
+  return valid;
+}
+
+static bool parse_config_data(const char *path, const char *data, size_t length,
+                              cli_config *config) {
+  if (is_toml_path(path)) {
+    return parse_toml_data(path, data, length, config);
+  }
+  return parse_json_data(data, length, config);
+}
+
+static bool parse_config_path(const char *path, cli_config *config) {
+  if (is_toml_path(path)) {
+    return parse_toml_document(path, config);
+  }
+  return parse_json_path(path, config);
+}
+
 static bool handle_missing_path(const char *root, cli_config *config) {
   if (config->error[0] == '\0') {
     return fail(config, "could not allocate configuration path");
@@ -527,10 +710,91 @@ bool cli_config_load(const char *root, const char *config_path, cli_config *conf
     return fail(config, unsupported_format);
   }
 
-  if (is_toml_path(config->source_path)) {
-    return parse_toml_document(config->source_path, config);
+  return parse_config_path(config->source_path, config);
+}
+
+static char *copy_index_path(const captured_output *output) {
+  if (output->length == 0) {
+    return NULL;
   }
-  return parse_json_path(config->source_path, config);
+  size_t length = 0;
+  while (length < output->length && output->data[length] != '\n') {
+    length += 1;
+  }
+  char *path = malloc(length + 1);
+  if (path == NULL) {
+    return NULL;
+  }
+  memcpy(path, output->data, length);
+  path[length] = '\0';
+  return path;
+}
+
+static char *git_index_path(const char *root, const char *source_path,
+                            cli_config *config) {
+  captured_output output = {0};
+  const char *const arguments[] = {
+      "git", "ls-files", "--full-name", "--", source_path, NULL,
+  };
+  const bool captured = capture_git(root, arguments, &output, config);
+  char *path = captured ? copy_index_path(&output) : NULL;
+  free(output.data);
+  return path;
+}
+
+static char *git_show_spec(const char *path) {
+  const size_t size = strlen(path) + 2;
+  char *spec = malloc(size);
+  if (spec != NULL) {
+    snprintf(spec, size, ":%s", path);
+  }
+  return spec;
+}
+
+static bool load_staged_config_data(const char *root, const char *path,
+                                    captured_output *output, cli_config *config) {
+  char *spec = git_show_spec(path);
+  if (spec == NULL) {
+    return fail(config, "could not allocate configuration path");
+  }
+  const char *const arguments[] = {"git", "show", spec, NULL};
+  const bool captured = capture_git(root, arguments, output, config);
+  free(spec);
+  return captured;
+}
+
+static bool parse_staged_config(const char *root, cli_config *config) {
+  char *path = git_index_path(root, config->source_path, config);
+  if (path == NULL) {
+    return fail(config, "no configuration file found");
+  }
+  captured_output output = {0};
+  const bool loaded = load_staged_config_data(root, path, &output, config);
+  free(path);
+  if (!loaded) {
+    free(output.data);
+    return false;
+  }
+  const bool parsed =
+      parse_config_data(config->source_path, output.data, output.length, config);
+  free(output.data);
+  return parsed;
+}
+
+bool cli_config_load_staged(const char *root, const char *config_path,
+                            cli_config *config) {
+  memset(config, 0, sizeof(*config));
+  config->source_path = locate_config(root, config_path, config);
+  if (config->source_path == NULL) {
+    return handle_missing_path(root, config);
+  }
+
+  const char *unsupported_format = format_error(config->source_path);
+  if (unsupported_format != NULL) {
+    return fail(config, unsupported_format);
+  }
+
+  return parse_staged_config(root, config);
 }
 
 bool cli_config_append_patterns(cli_config *config, const char *const *patterns,

@@ -1,34 +1,21 @@
-execute_process(
-  COMMAND "${FS_LINT}"
-  RESULT_VARIABLE status
-  OUTPUT_VARIABLE output
-  ERROR_VARIABLE error
-)
-
 string(
   CONCAT
   expected_error
+  "usage: fs-lint [--root path] [--config path] "
+  "[--format text|json] [--allow pattern] "
+  "[--deny pattern]\n"
+  "usage: fs-lint check "
+  "[--root path] [--config path] "
+  "[--format text|json] [--allow pattern] "
+  "[--deny pattern] [--] <path>...\n"
+  "usage: fs-lint check (--stdin0|--staged|--base ref) "
+  "[--root path] [--config path] "
+  "[--format text|json] [--allow pattern] [--deny pattern]\n"
   "usage: fs-lint check-path "
   "[--root path] [--config path] "
   "[--format text|json] [--allow pattern] "
   "[--deny pattern] [--] <path>\n"
-  "usage: fs-lint check (--stdin0|--staged|--base ref) "
-  "[--root path] [--config path] "
-  "[--format text|json] [--allow pattern] "
-  "[--deny pattern]\n"
 )
-
-if(NOT status EQUAL 2)
-  message(FATAL_ERROR "expected usage exit code 2, received ${status}")
-endif()
-
-if(NOT output STREQUAL "")
-  message(FATAL_ERROR "expected empty stdout: ${output}")
-endif()
-
-if(NOT error STREQUAL expected_error)
-  message(FATAL_ERROR "unexpected stderr: ${error}")
-endif()
 
 execute_process(
   COMMAND "${FS_LINT}" --help
@@ -66,6 +53,33 @@ endif()
 
 if(NOT version_error STREQUAL "")
   message(FATAL_ERROR "expected empty version stderr: ${version_error}")
+endif()
+
+file(REMOVE_RECURSE "${TEST_ROOT}")
+file(MAKE_DIRECTORY "${TEST_ROOT}")
+file(
+  WRITE
+  "${TEST_ROOT}/fs-lint.json"
+  "{\"version\":1,\"newFiles\":{\"default\":\"deny\"}}"
+)
+
+execute_process(
+  COMMAND "${FS_LINT}" --root "${TEST_ROOT}"
+  RESULT_VARIABLE status
+  OUTPUT_VARIABLE output
+  ERROR_VARIABLE error
+)
+
+if(NOT status EQUAL 0)
+  message(FATAL_ERROR "expected config validation exit code 0, received ${status}")
+endif()
+
+if(NOT output STREQUAL "")
+  message(FATAL_ERROR "expected empty config-validation stdout: ${output}")
+endif()
+
+if(NOT error STREQUAL "")
+  message(FATAL_ERROR "expected empty config-validation stderr: ${error}")
 endif()
 
 execute_process(

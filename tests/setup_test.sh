@@ -78,6 +78,18 @@ assert_custom_hooks_path_is_rejected() {
   reject_setup "custom hook path"
 }
 
+assert_missing_clang_tidy_is_reported() {
+  missing_clang_tidy="$test_root/missing-clang-tidy"
+  setup_output="$(CLANG_TIDY="$missing_clang_tidy" "$repo/scripts/setup.sh" pre-commit 2>&1)" &&
+    fail "missing clang-tidy was accepted"
+  printf '%s' "$setup_output" | grep -Fq 'setup: missing required command:' ||
+    fail "missing clang-tidy was not reported"
+  printf '%s' "$setup_output" | grep -Fq 'CLANG_TIDY' ||
+    fail "missing clang-tidy did not include override hint"
+  ! printf '%s' "$setup_output" | grep -Fq 'debug build' ||
+    fail "missing clang-tidy was reported after the build"
+}
+
 main() {
   setup_repo
   assert_initial_install
@@ -86,6 +98,7 @@ main() {
   assert_unmanaged_hook_is_preserved
   assert_symlink_hook_is_preserved
   assert_custom_hooks_path_is_rejected
+  assert_missing_clang_tidy_is_reported
   printf '%s\n' "setup test: passed"
 }
 

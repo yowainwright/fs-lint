@@ -8,15 +8,17 @@
 #include <stdlib.h>
 #include <string.h>
 
-typedef enum { CLI_COMMAND_INVALID, CLI_CHECK_PATH, CLI_CHECK_BATCH } cli_command;
+typedef enum { CLI_CONFIG, CLI_CHECK_PATH, CLI_CHECK } cli_command;
 
 typedef struct {
   const char *root;
   const char *config_path;
-  const char *path;
   const char *base;
   cli_output_format format;
   cli_command command;
+  const char **paths;
+  size_t path_count;
+  size_t path_capacity;
   char **override_patterns;
   size_t override_pattern_count;
   size_t override_pattern_capacity;
@@ -26,12 +28,17 @@ typedef struct {
 } cli_arguments;
 
 static void print_usage(FILE *stream) {
-  fputs("usage: fs-lint check-path [--root path] [--config path] "
-        "[--format text|json] [--allow pattern] [--deny pattern] [--] <path>\n",
+  fputs("usage: fs-lint [--root path] [--config path] [--format text|json] "
+        "[--allow pattern] [--deny pattern]\n",
+        stream);
+  fputs("usage: fs-lint check [--root path] [--config path] [--format text|json] "
+        "[--allow pattern] [--deny pattern] [--] <path>...\n",
         stream);
   fputs("usage: fs-lint check (--stdin0|--staged|--base ref) [--root path] "
-        "[--config path] [--format text|json] [--allow pattern] "
-        "[--deny pattern]\n",
+        "[--config path] [--format text|json] [--allow pattern] [--deny pattern]\n",
+        stream);
+  fputs("usage: fs-lint check-path [--root path] [--config path] "
+        "[--format text|json] [--allow pattern] [--deny pattern] [--] <path>\n",
         stream);
 }
 
@@ -67,6 +74,7 @@ static void destroy_arguments(cli_arguments *arguments) {
     free(arguments->override_patterns[index]);
   }
   free(arguments->override_patterns);
+  free(arguments->paths);
   memset(arguments, 0, sizeof(*arguments));
 }
 
@@ -76,7 +84,7 @@ static bool read_command(const char *value, cli_arguments *arguments) {
     return true;
   }
   if (strcmp(value, "check") == 0) {
-    arguments->command = CLI_CHECK_BATCH;
+    arguments->command = CLI_CHECK;
     return true;
   }
   return false;
@@ -226,11 +234,37 @@ static bool parse_option(int argc, char **argv, size_t *index,
   return read_source_option(argc, argv, option, index, arguments);
 }
 
-static bool assign_path(const char *path, size_t *index, cli_arguments *arguments) {
-  if (arguments->path != NULL) {
+static bool grow_paths(cli_arguments *arguments) {
+  const size_t doubled = arguments->path_capacity * 2U;
+  const size_t capacity = arguments->path_capacity == 0 ? 4U : doubled;
+  const char **paths = realloc(arguments->paths, capacity * sizeof(*paths));
+  if (paths == NULL) {
+    return set_parse_error(arguments, "could not allocate paths");
+  }
+  arguments->paths = paths;
+  arguments->path_capacity = capacity;
+  return true;
+}
+
+static bool append_path(const char *path, size_t *index, cli_arguments *arguments) {
+  const bool needs_capacity = arguments->path_count == arguments->path_capacity;
+  if (needs_capacity && !grow_paths(arguments)) {
     return false;
   }
-  arguments->path = path;
+  arguments->paths[arguments->path_count] = path;
+  arguments->path_count += 1;
+  *index += 1;
+  return true;
+}
+
+static bool read_subcommand(const char *token, size_t *index,
+                            cli_arguments *arguments) {
+  if (arguments->command != CLI_CONFIG) {
+    return false;
+  }
+  if (!read_command(token, arguments)) {
+    return false;
+  }
   *index += 1;
   return true;
 }
@@ -238,18 +272,21 @@ static bool assign_path(const char *path, size_t *index, cli_arguments *argument
 static bool parse_token(int argc, char **argv, size_t *index, bool *options_ended,
                         cli_arguments *arguments) {
   if (*options_ended) {
-    return assign_path(argv[*index], index, arguments);
+    return append_path(argv[*index], index, arguments);
   }
   if (strcmp(argv[*index], "--") == 0) {
     *options_ended = true;
     *index += 1;
     return true;
   }
+  if (read_subcommand(argv[*index], index, arguments)) {
+    return true;
+  }
   const bool is_option = argv[*index][0] == '-';
   if (is_option) {
     return parse_option(argc, argv, index, arguments);
   }
-  return assign_path(argv[*index], index, arguments);
+  return append_path(argv[*index], index, arguments);
 }
 
 static size_t count_sources(const cli_arguments *arguments) {
@@ -270,23 +307,25 @@ static bool valid_base(const cli_arguments *arguments) {
 }
 
 static bool valid_arguments(const cli_arguments *arguments) {
+  if (arguments->command == CLI_CONFIG) {
+    const bool no_paths = arguments->path_count == 0;
+    const bool no_sources = count_sources(arguments) == 0;
+    return no_paths && no_sources;
+  }
   if (arguments->command == CLI_CHECK_PATH) {
     const bool no_source = count_sources(arguments) == 0;
-    return arguments->path != NULL && no_source;
+    return arguments->path_count == 1 && no_source;
   }
-  const bool batch = arguments->command == CLI_CHECK_BATCH;
-  const bool no_path = arguments->path == NULL;
-  const bool one_source = count_sources(arguments) == 1;
+  const bool path_check = arguments->path_count > 0 && count_sources(arguments) == 0;
+  const bool source_check = arguments->path_count == 0 && count_sources(arguments) == 1;
+  const bool one_source = path_check || source_check;
   const bool valid_source = one_source && valid_base(arguments);
-  return batch && no_path && valid_source;
+  return arguments->command == CLI_CHECK && valid_source;
 }
 
 static bool parse_arguments(int argc, char **argv, cli_arguments *arguments) {
   initialize_arguments(arguments);
-  if (argc < 2 || !read_command(argv[1], arguments)) {
-    return false;
-  }
-  size_t index = 2;
+  size_t index = 1;
   bool options_ended = false;
   while (index < (size_t)argc) {
     if (!parse_token(argc, argv, &index, &options_ended, arguments)) {
@@ -311,7 +350,10 @@ static int run_checks(const cli_arguments *arguments, const legibility_change *c
                       size_t change_count) {
   cli_output output = {.format = arguments->format, .stream = stdout};
   cli_config config;
-  const bool loaded = cli_config_load(arguments->root, arguments->config_path, &config);
+  const bool loaded =
+      arguments->staged
+          ? cli_config_load_staged(arguments->root, arguments->config_path, &config)
+          : cli_config_load(arguments->root, arguments->config_path, &config);
   if (!loaded) {
     report_cli_error("config/invalid", config.source_path, config.error, &output);
     cli_config_destroy(&config);
@@ -331,12 +373,25 @@ static int run_checks(const cli_arguments *arguments, const legibility_change *c
   return (int)status;
 }
 
-static int check_path(const cli_arguments *arguments) {
-  const legibility_change change = {
-      .path = arguments->path,
-      .kind = LEGIBILITY_CHANGE_ADDED,
-  };
-  return run_checks(arguments, &change, 1);
+static int validate_config(const cli_arguments *arguments) {
+  return run_checks(arguments, NULL, 0);
+}
+
+static int check_paths(const cli_arguments *arguments) {
+  legibility_change *changes = calloc(arguments->path_count, sizeof(*changes));
+  if (changes == NULL) {
+    fputs("fs-lint: could not allocate paths\n", stderr);
+    return LEGIBILITY_STATUS_ERROR;
+  }
+  for (size_t index = 0; index < arguments->path_count; index += 1) {
+    changes[index] = (legibility_change){
+        .path = arguments->paths[index],
+        .kind = LEGIBILITY_CHANGE_ADDED,
+    };
+  }
+  const int status = run_checks(arguments, changes, arguments->path_count);
+  free(changes);
+  return status;
 }
 
 static bool load_batch_changes(const cli_arguments *arguments, cli_changes *changes) {
@@ -379,8 +434,14 @@ int main(int argc, char **argv) {
     destroy_arguments(&arguments);
     return status;
   }
-  const int status = arguments.command == CLI_CHECK_PATH ? check_path(&arguments)
-                                                         : check_batch(&arguments);
+  int status = LEGIBILITY_STATUS_ERROR;
+  if (arguments.command == CLI_CONFIG) {
+    status = validate_config(&arguments);
+  } else if (arguments.path_count > 0) {
+    status = check_paths(&arguments);
+  } else {
+    status = check_batch(&arguments);
+  }
   destroy_arguments(&arguments);
   return status;
 }

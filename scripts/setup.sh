@@ -24,7 +24,63 @@ run_clang_tidy() {
     set -- "$@" --extra-arg=-isysroot "--extra-arg=$sdk_path"
     ;;
   esac
-  "${CLANG_TIDY:-clang-tidy}" "$@"
+  "$clang_tidy" "$@"
+}
+
+require_command() {
+  command_name="${1:?}"
+  hint="${2:-}"
+  command -v "$command_name" >/dev/null 2>&1 && return 0
+  printf 'setup: missing required command: %s\n' "$command_name" >&2
+  [ -z "$hint" ] || printf 'setup: %s\n' "$hint" >&2
+  exit 1
+}
+
+require_pre_commit_commands() {
+  require_command git
+  require_command cmake
+  require_command ctest
+  require_command shfmt
+  require_command shellcheck
+  require_command shellcheck-legibility
+  require_command clang-format
+  require_command "$clang_tidy" \
+    "install clang-tidy or set CLANG_TIDY to its executable path"
+}
+
+resolve_homebrew_clang_tidy() {
+  command -v brew >/dev/null 2>&1 || return 1
+  llvm_prefix="$(brew --prefix llvm 2>/dev/null || true)"
+  [ -n "$llvm_prefix" ] || return 1
+  candidate="$llvm_prefix/bin/clang-tidy"
+  [ -x "$candidate" ] || return 1
+  printf '%s\n' "$candidate"
+}
+
+resolve_env_clang_tidy() {
+  [ -n "${CLANG_TIDY:-}" ] || return 1
+  printf '%s\n' "$CLANG_TIDY"
+}
+
+resolve_path_clang_tidy() {
+  command -v clang-tidy >/dev/null 2>&1 || return 1
+  printf '%s\n' "clang-tidy"
+}
+
+print_clang_tidy_if_set() {
+  clang_tidy_candidate="${1:-}"
+  [ -n "$clang_tidy_candidate" ] || return 1
+  printf '%s\n' "$clang_tidy_candidate"
+}
+
+resolve_clang_tidy() {
+  resolved_clang_tidy="$(resolve_env_clang_tidy || true)"
+  print_clang_tidy_if_set "$resolved_clang_tidy" && return 0
+  resolved_clang_tidy="$(resolve_path_clang_tidy || true)"
+  print_clang_tidy_if_set "$resolved_clang_tidy" && return 0
+  resolved_clang_tidy="$(resolve_homebrew_clang_tidy || true)"
+  print_clang_tidy_if_set "$resolved_clang_tidy" && return 0
+  printf '%s\n' "clang-tidy"
 }
 
 prepare_build_dir() {
@@ -41,6 +97,7 @@ skip_hooks() {
 run_pre_commit() {
   skip_hooks && return 0
   cd "$root"
+  require_pre_commit_commands
   printf 'setup: staged diff check\n'
   git --no-pager diff --cached --check
   run_shell_checks
@@ -184,6 +241,7 @@ main() {
   legacy_marker="# fs-lint-legibility managed hook"
   script_dir="$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)"
   root="$(git -C "$script_dir/.." rev-parse --show-toplevel)"
+  clang_tidy="$(resolve_clang_tidy)"
   mode="${1:-install}"
   [ "$#" -le 1 ] || mode="invalid"
   dispatch "$mode"

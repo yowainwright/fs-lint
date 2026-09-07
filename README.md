@@ -11,21 +11,11 @@
 paths against glob rules in your config.
 
 Use it in agent lifecycle hooks to stop one-off files before they enter the
-tree. It also works in Git hooks and CI.
+tree! It also works in Git hooks and CI.
 
 ## How It Works
 
-`fs-lint` receives proposed paths from an agent, Git, or stdin. It checks each
-path against `.fs-lintrc`, `fs-lint.json`, or `fs-lint.toml`.
-
-```mermaid
-flowchart LR
-  Change["added file or rename destination"] --> Policy{"configured policy allows path?"}
-  Policy -- yes --> Allowed["allow"]
-  Policy -- no --> Rejected["reject"]
-```
-
-Start with a small config:
+`fs-lint` checks new files against a config:
 
 ```json
 {
@@ -37,7 +27,7 @@ Start with a small config:
 }
 ```
 
-`fs-lint` allows or errors based on your configuration:
+It allows or errors based on that config:
 
 ```diff
   src/
@@ -50,18 +40,58 @@ Start with a small config:
 +     index.ts
 ```
 
-```text
-src/auth/helper.ts: error files/new: new file is not allowed by configuration
-```
+That's it!
 
-`**/` matches zero or more directories. It allows `src/index.ts` and
-`src/auth-utils/index.ts`, but does not turn `index.ts` into a suffix match
-for filenames such as `myindex.ts`.
-
-Use CLI patterns to test one run without changing config:
+`fs-lint` has a small CLI:
 
 ```sh
-fs-lint check-path src/auth/helper.ts --allow "src/**/helper.ts"
+fs-lint
+fs-lint --allow "src/**/helper.ts"
+fs-lint --deny "src/**/*.generated.ts"
+```
+
+In agent lifecycle hooks, I use it to keep file creation in bounds.
+
+```diff
+"Stop": [
+  {
+    "hooks": [
+      {
+        "type": "command",
++       "command": "fs-lint check --staged",
+        "timeout": 120,
+        "statusMessage": "Running session checks"
+      }
+    ]
+  }
+]
+```
+
+If an agent goes out of bounds:
+
+```diff
+- src/auth/helper.ts: error files/new: new file is not allowed by configuration
+```
+
+You can use `**/` to match zero or more directories.
+
+```jsonc
+{
+  "version": 1,
+  "newFiles": {
+    "default": "deny",
+    "allow": [
+      "README.md",
+      "docs/**/*.md",
+    ]
+  }
+}
+```
+
+You can also use CLI patterns to test or override config.
+
+```sh
+fs-lint check src/auth/helper.ts --allow "src/**/helper.ts"
 ```
 
 ```diff
@@ -71,7 +101,7 @@ fs-lint check-path src/auth/helper.ts --allow "src/**/helper.ts"
 ```
 
 ```sh
-fs-lint check-path src/auth/schema.generated.ts --deny "src/**/*.generated.ts"
+fs-lint check src/auth/schema.generated.ts --deny "src/**/*.generated.ts"
 ```
 
 ```diff
@@ -81,6 +111,8 @@ fs-lint check-path src/auth/schema.generated.ts --deny "src/**/*.generated.ts"
 ```
 
 CLI patterns are appended after config patterns, in the order provided.
+
+---
 
 ## Install
 
@@ -102,30 +134,44 @@ ctest --test-dir build --output-on-failure
 cmake --install build --prefix ./dist
 ```
 
-## CLI
+---
+
+## CLI API
 
 ```sh
-fs-lint check-path [--root path] [--config path] [--format text|json] \
-  [--allow pattern] [--deny pattern] [--] <path>
+fs-lint [--root path] [--config path] [--format text|json] \
+  [--allow pattern] [--deny pattern]
+
+fs-lint check [--root path] [--config path] [--format text|json] \
+  [--allow pattern] [--deny pattern] [--] <path>...
 
 fs-lint check (--stdin0|--staged|--base ref) [--root path] [--config path] \
   [--format text|json] [--allow pattern] [--deny pattern]
+
+fs-lint check-path [--root path] [--config path] [--format text|json] \
+  [--allow pattern] [--deny pattern] [--] <path>
 ```
 
 Examples:
 
 ```sh
+fs-lint
+fs-lint --allow "src/**/helper.ts"
+fs-lint check src/auth/helper.ts src/auth/index.ts
 fs-lint check --staged
 fs-lint check --base origin/main
 git diff --name-only --diff-filter=A --no-renames -z | fs-lint check --stdin0
 ```
 
-`check` accepts exactly one source. `--stdin0` treats each NUL-delimited path as
-added. `--staged` checks added paths in the Git index. `--base` checks added
-paths on `HEAD` since its merge base with a Git ref.
+With no subcommand, `fs-lint` validates the discovered config. `check` accepts
+explicit paths or exactly one source. `--stdin0` treats each NUL-delimited path
+as added. `--staged` checks added paths and staged config in the Git index.
+`--base` checks added paths on `HEAD` since its merge base with a Git ref.
 
 Exit code `0` means allowed, `1` means policy violations, and `2` means usage
 or configuration error.
+
+---
 
 ## Configuration
 
@@ -171,14 +217,7 @@ allow = [
 Allow patterns are evaluated in order. Positive patterns allow a path. Patterns
 that start with `!` deny it again.
 
-Configuration input is bounded before parsing:
-
-| Limit | Value |
-| --- | --- |
-| Config file | 1,048,576 bytes |
-| Allow patterns | 4,096 |
-| Total pattern bytes | 262,144 |
-| One pattern | 4,096 bytes |
+---
 
 ## Glob Syntax
 
@@ -194,6 +233,8 @@ Patterns match the complete path.
 | `!` | Deny a matching path after earlier allows |
 
 Forward and backward slashes are treated as path separators.
+
+---
 
 ## Library
 
@@ -238,21 +279,6 @@ library.
 The hook setup installs a managed pre-commit hook. It runs shell checks,
 `clang-format`, `clang-tidy`, and debug tests. Both C tools are required; see
 [development setup](.github/CONTRIBUTING.md#development-setup).
-
-Run all pre-commit checks:
-
-```sh
-./scripts/setup.sh pre-commit
-```
-
-Release build and tests:
-
-```sh
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_FLAGS=-Werror
-cmake --build build --parallel
-ctest --test-dir build --output-on-failure
-cmake --build build --target e2e
-```
 
 ## Release
 
