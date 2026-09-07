@@ -20,11 +20,9 @@ path against `.fs-lintrc`, `fs-lint.json`, or `fs-lint.toml`.
 
 ```mermaid
 flowchart LR
-  Change["new file"] --> Agent{"agent session?"}
-  Agent -- yes --> Allowlist{"matches newFiles.allow?"}
-  Allowlist -- yes --> AgentAllowed["allow"]
-  Allowlist -- no --> AgentRejected["reject"]
-  Agent -- no --> LintAllowed["allow"]
+  Change["added file or rename destination"] --> Policy{"configured policy allows path?"}
+  Policy -- yes --> Allowed["allow"]
+  Policy -- no --> Rejected["reject"]
 ```
 
 Start with a small config:
@@ -49,12 +47,16 @@ Start with a small config:
 -     helper.ts
 -     schema.generated.ts
     auth-utils/
--     index.ts
++     index.ts
 ```
 
 ```text
 src/auth/helper.ts: error files/new: new file is not allowed by configuration
 ```
+
+`**/` matches zero or more directories. It allows `src/index.ts` and
+`src/auth-utils/index.ts`, but does not turn `index.ts` into a suffix match
+for filenames such as `myindex.ts`.
 
 Use CLI patterns to test one run without changing config:
 
@@ -89,6 +91,9 @@ brew install yowainwright/tap/fs-lint
 ```
 
 ### From Source
+
+The Homebrew release integration test requires Ruby on your `PATH`. CMake
+omits that test when Ruby is unavailable.
 
 ```sh
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
@@ -230,10 +235,17 @@ library.
 ./scripts/setup.sh
 ```
 
-The hook setup installs a managed pre-commit hook. It runs shell checks, C
-formatting, and debug tests.
+The hook setup installs a managed pre-commit hook. It runs shell checks,
+`clang-format`, `clang-tidy`, and debug tests. Both C tools are required; see
+[development setup](.github/CONTRIBUTING.md#development-setup).
 
-Full local check:
+Run all pre-commit checks:
+
+```sh
+./scripts/setup.sh pre-commit
+```
+
+Release build and tests:
 
 ```sh
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_FLAGS=-Werror

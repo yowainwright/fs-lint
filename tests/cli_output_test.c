@@ -25,7 +25,9 @@ static void expect_null_path(cli_output_format format, const char *expected) {
   };
   cli_output output = {.format = format, .stream = stream};
   cli_report(&diagnostic, &output);
-  rewind(stream);
+  if (fseek(stream, 0, SEEK_SET) != 0) {
+    fail("could not rewind output stream", stream);
+  }
 
   char line[256] = {0};
   if (fgets(line, sizeof(line), stream) == NULL) {

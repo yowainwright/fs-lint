@@ -7,10 +7,24 @@ run_suite() {
   build_dir="$root/build-hooks-$name"
   prepare_build_dir "$build_dir"
   printf 'setup: %s build\n' "$name"
-  cmake -S "$root" -B "$build_dir" -DCMAKE_BUILD_TYPE="$build_type" -DCMAKE_C_FLAGS=-Werror
+  cmake -S "$root" -B "$build_dir" -DCMAKE_BUILD_TYPE="$build_type" \
+    -DCMAKE_C_FLAGS=-Werror -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
   cmake --build "$build_dir" --parallel
+  run_clang_tidy
   printf 'setup: %s tests\n' "$name"
   ctest --test-dir "$build_dir" --output-on-failure
+}
+
+run_clang_tidy() {
+  printf 'setup: clang-tidy\n'
+  set -- -p "$build_dir" src/*.c tests/*.c
+  case "$(uname -s)" in
+  Darwin)
+    sdk_path="$(xcrun --sdk macosx --show-sdk-path)"
+    set -- "$@" --extra-arg=-isysroot "--extra-arg=$sdk_path"
+    ;;
+  esac
+  "${CLANG_TIDY:-clang-tidy}" "$@"
 }
 
 prepare_build_dir() {
@@ -18,22 +32,6 @@ prepare_build_dir() {
   cache="$build_dir/CMakeCache.txt"
   [ -f "$cache" ] || return 0
   grep -Fxq "CMAKE_HOME_DIRECTORY:INTERNAL=$root" "$cache" || rm -rf "$build_dir"
-}
-
-run_sanitizers() {
-  sanitizer_dir="$root/build-hooks-sanitized"
-  prepare_build_dir "$sanitizer_dir"
-  compile_flags="-Werror -fsanitize=address,undefined -fno-omit-frame-pointer"
-  linker_flags="-fsanitize=address,undefined"
-  printf 'setup: sanitizer build\n'
-  cmake -S "$root" -B "$sanitizer_dir" -DCMAKE_BUILD_TYPE=Debug \
-    "-DCMAKE_C_FLAGS=$compile_flags" "-DCMAKE_EXE_LINKER_FLAGS=$linker_flags"
-  cmake --build "$sanitizer_dir" --parallel
-  asan_options="strict_string_checks=1"
-  [ "$(uname -s)" != "Linux" ] || asan_options="detect_leaks=1:$asan_options"
-  printf 'setup: sanitizer tests\n'
-  ASAN_OPTIONS="$asan_options" UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 \
-    ctest --test-dir "$sanitizer_dir" --output-on-failure --exclude-regex '^e2e-install$'
 }
 
 skip_hooks() {
@@ -52,13 +50,14 @@ run_pre_commit() {
 }
 
 run_shell_checks() {
+  cd "$root"
+  set -- scripts/*.sh tests/*.sh tests/integration/*.sh
   printf 'setup: shell format check\n'
-  shfmt -d -i 2 scripts/release.sh scripts/setup.sh tests/integration/release_test.sh tests/setup_test.sh
+  shfmt -d -i 2 "$@"
   printf 'setup: shellcheck\n'
-  shellcheck scripts/release.sh scripts/setup.sh tests/integration/release_test.sh tests/setup_test.sh
-  command -v shellcheck-legibility >/dev/null 2>&1 || return 0
+  shellcheck "$@"
   printf 'setup: shellcheck-legibility\n'
-  shellcheck-legibility check scripts/release.sh scripts/setup.sh tests/integration/release_test.sh tests/setup_test.sh
+  shellcheck-legibility check "$@"
 }
 
 run_pre_push() {
@@ -171,9 +170,10 @@ dispatch() {
   case "$mode" in
   pre-commit) run_pre_commit ;;
   pre-push) run_pre_push ;;
+  shell-check) run_shell_checks ;;
   install) run_install ;;
   *)
-    printf 'usage: scripts/setup.sh\n' >&2
+    printf 'usage: scripts/setup.sh [install|pre-commit|pre-push|shell-check]\n' >&2
     exit 1
     ;;
   esac

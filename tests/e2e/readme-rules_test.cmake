@@ -33,6 +33,17 @@ assert_path(src/new-helper.c 1 "${denied}")
 write_config("{\"version\":1,\"newFiles\":{\"default\":\"allow\"}}")
 assert_path(src/new-helper.c 0 "")
 
+write_config([=[
+{"version":1,"newFiles":{"default":"deny","allow":["src/**/{index,utils,types,constants}.ts"]}}
+]=])
+assert_path(src/index.ts 0 "")
+assert_path(src/auth/index.ts 0 "")
+assert_path(src/auth/utils.ts 0 "")
+assert_path(src/auth-utils/index.ts 0 "")
+foreach(path src/auth/helper.ts src/auth/schema.generated.ts src/myindex.ts src/auth/notutils.ts)
+  assert_path("${path}" 1 "${path}: error files/new: new file is not allowed by configuration\n")
+endforeach()
+
 string(
   CONCAT
   readme_config

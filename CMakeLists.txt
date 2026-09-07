@@ -23,8 +23,11 @@ target_include_directories(yyjson PUBLIC vendor/yyjson)
 
 add_library(tomlc17 STATIC vendor/tomlc17/tomlc17.c)
 target_include_directories(tomlc17 PUBLIC vendor/tomlc17)
-if(CMAKE_C_COMPILER_ID MATCHES "Clang|GNU")
-  target_compile_options(tomlc17 PRIVATE -fno-sanitize=all)
+if(CMAKE_C_COMPILER_ID MATCHES "Clang")
+  target_compile_options(
+    tomlc17 PRIVATE
+    "-fsanitize-ignorelist=${CMAKE_CURRENT_SOURCE_DIR}/cmake/tomlc17-sanitizer-ignorelist.txt"
+  )
 endif()
 
 add_library(legibility STATIC src/glob.c src/legibility.c)
@@ -100,6 +103,13 @@ if(BUILD_TESTING)
   target_link_libraries(legibility-test PRIVATE legibility)
   legibility_enable_warnings(legibility-test)
   add_test(NAME core-policy COMMAND legibility-test)
+  add_executable(allocation-test tests/allocation_test.c src/glob.c src/legibility.c)
+  target_include_directories(allocation-test PRIVATE include src)
+  target_compile_definitions(
+    allocation-test PRIVATE malloc=test_malloc calloc=test_calloc free=test_free
+  )
+  legibility_enable_warnings(allocation-test)
+  add_test(NAME allocation-failures COMMAND allocation-test)
   add_executable(cli-output-test tests/cli_output_test.c src/cli_output.c)
   target_include_directories(cli-output-test PRIVATE src)
   target_link_libraries(cli-output-test PRIVATE legibility)
@@ -107,11 +117,16 @@ if(BUILD_TESTING)
   add_test(NAME cli-output COMMAND cli-output-test)
   add_test(NAME setup-hooks COMMAND sh ${CMAKE_CURRENT_SOURCE_DIR}/tests/setup_test.sh)
   set_tests_properties(setup-hooks PROPERTIES LABELS "scripts")
-  add_test(
-    NAME integration-release-homebrew-readme
-    COMMAND sh ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/release_test.sh
-  )
-  set_tests_properties(integration-release-homebrew-readme PROPERTIES LABELS "integration;scripts")
+  find_program(FS_LINT_RUBY ruby)
+  if(FS_LINT_RUBY)
+    add_test(
+      NAME integration-release-homebrew-readme
+      COMMAND sh ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/release_test.sh
+    )
+    set_tests_properties(integration-release-homebrew-readme PROPERTIES LABELS "integration;scripts")
+  else()
+    message(STATUS "Ruby not found; skipping the Homebrew release integration test")
+  endif()
 
   function(add_fs_lint_e2e name)
     set(test_name e2e-${name})

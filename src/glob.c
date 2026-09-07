@@ -71,7 +71,11 @@ static bool find_pattern_width(const char *const *patterns, size_t pattern_count
 static bool allocate_pattern_storage(legibility_glob_matcher *matcher,
                                      size_t pattern_count) {
   matcher->patterns = allocate_items(pattern_count, sizeof(*matcher->patterns));
-  return pattern_count == 0 || matcher->patterns != NULL;
+  if (pattern_count > 0 && matcher->patterns == NULL) {
+    return false;
+  }
+  matcher->pattern_count = pattern_count;
+  return true;
 }
 
 static bool allocate_match_storage(legibility_glob_matcher *matcher) {
@@ -210,7 +214,8 @@ static void consume_star(pattern_matcher *context, size_t index, char path) {
   const bool starstar = context->pattern[index + 1] == '*';
   const bool directory = starstar && is_separator(context->pattern[index + 2]);
   if (directory) {
-    add_next_state(context, index);
+    // Stay in the directory loop without reopening the zero-directory path.
+    context->matcher->next[index] = 1;
     if (is_separator(path)) {
       add_next_state(context, index + 3);
     }
@@ -276,7 +281,6 @@ static legibility_glob_matcher *allocate_matcher(size_t pattern_count,
   if (matcher == NULL) {
     return NULL;
   }
-  matcher->pattern_count = pattern_count;
   matcher->pattern_width = pattern_width;
   const bool storage_ready = allocate_pattern_storage(matcher, pattern_count);
   const bool matches_ready = storage_ready && allocate_match_storage(matcher);
@@ -288,9 +292,7 @@ static legibility_glob_matcher *allocate_matcher(size_t pattern_count,
 }
 
 legibility_glob_matcher *legibility_glob_matcher_create(const char *const *patterns,
-                                                        size_t pattern_count,
-                                                        size_t max_path_length) {
-  (void)max_path_length;
+                                                        size_t pattern_count) {
   size_t pattern_width;
   if (!find_pattern_width(patterns, pattern_count, &pattern_width)) {
     return NULL;

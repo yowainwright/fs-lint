@@ -163,15 +163,9 @@ update_formula() {
   version="${2:?}"
 
   cd "$tap_dir"
-  [ -f Formula/fs-lint.rb ] || return_new_formula "$version"
-
-  scripts/update-formula fs-lint "$version"
-}
-
-return_new_formula() {
-  version="${1:?}"
-
-  scripts/new-formula fs-lint "$version"
+  formula_script=scripts/new-formula
+  [ -f Formula/fs-lint.rb ] && formula_script=scripts/update-formula
+  "$formula_script" fs-lint "$version"
 }
 
 validate_formula() {
@@ -193,7 +187,7 @@ open_pull_request() {
   cd "$tap_dir"
   prepare_pr_branch "$branch"
   stage_release_files
-  git diff --cached --quiet && return_current_formula
+  git diff --cached --quiet && return_current_formula && return 0
   publish_pr_branch "$branch" "$tag"
   open_or_show_pr "$tap_repository" "$branch" "$tag"
 }
@@ -240,7 +234,7 @@ open_or_show_pr() {
       --jq '.[0].url // ""'
   )"
 
-  [ -z "$pr_url" ] || return_existing_pr "$pr_url"
+  [ -n "$pr_url" ] && return_existing_pr "$pr_url" && return 0
 
   create_pull_request "$tap_repository" "$branch" "$tag"
 }
