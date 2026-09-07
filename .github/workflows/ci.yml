@@ -79,11 +79,56 @@ jobs:
 
   format:
     name: clang-format
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
           persist-credentials: false
+      - name: Install clang-format
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes clang-format-18
       - run: >-
-          clang-format --dry-run --Werror
+          clang-format-18 --dry-run --Werror
           include/*.h src/*.c src/*.h tests/*.c
+
+  lint:
+    name: clang-tidy
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+      - name: Install clang-tidy
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes clang-tidy-18
+      - name: Configure compilation database
+        run: >-
+          cmake -S . -B build-lint
+          -DCMAKE_BUILD_TYPE=Debug
+          -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+      - name: Lint C sources and headers
+        run: clang-tidy-18 -p build-lint src/*.c tests/*.c
+
+  shell:
+    name: Shell format and lint
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+      - name: Install shell tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes shellcheck shfmt
+          mkdir -p build-shell-tools
+          archive=build-shell-tools/shellcheck-legibility-0.2.1.tar.gz
+          curl --fail --location --retry 3 \
+            https://github.com/yowainwright/shellcheck_legibility/releases/download/v0.2.1/shellcheck-legibility-0.2.1.tar.gz \
+            --output "$archive"
+          echo "137942db1000e72ce8f8e2fbe8c10e334c70dc554ad2ef08aa49f0778f0302c0  $archive" | sha256sum --check --strict
+          tar -xzf "$archive" -C build-shell-tools
+          echo "$PWD/build-shell-tools/shellcheck-legibility-0.2.1/bin" >> "$GITHUB_PATH"
+      - name: Check shell scripts
+        run: ./scripts/setup.sh shell-check

@@ -7,7 +7,7 @@
 [![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 [![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](./.github/CONTRIBUTING.md)
 
-`fs-lint` enforces your project's file and folder structure. It checks proposed
+`fs-lint` lints your project's file and folder structure. It checks proposed
 paths against glob rules in your config.
 
 Use it in agent lifecycle hooks to stop one-off files before they enter the
@@ -20,9 +20,9 @@ path against `.fs-lintrc`, `fs-lint.json`, or `fs-lint.toml`.
 
 ```mermaid
 flowchart LR
-  Source["agent hook, Git, or stdin"] --> Paths["proposed paths"]
-  Paths --> Config["fs-lint config"]
-  Config --> Result["allow or report files/new"]
+  Change["added file or rename destination"] --> Policy{"configured policy allows path?"}
+  Policy -- yes --> Allowed["allow"]
+  Policy -- no --> Rejected["reject"]
 ```
 
 Start with a small config:
@@ -37,47 +37,47 @@ Start with a small config:
 }
 ```
 
-That config allows common module files:
+`fs-lint` allows or errors based on your configuration:
 
-```sh
-fs-lint check-path src/auth/utils.ts
-```
-
-It blocks one-off file names:
-
-```sh
-fs-lint check-path src/auth/helper.ts
+```diff
+  src/
+    auth/
++     index.ts
++     utils.ts
+-     helper.ts
+-     schema.generated.ts
+    auth-utils/
++     index.ts
 ```
 
 ```text
 src/auth/helper.ts: error files/new: new file is not allowed by configuration
 ```
 
-It blocks one-off folder names:
+`**/` matches zero or more directories. It allows `src/index.ts` and
+`src/auth-utils/index.ts`, but does not turn `index.ts` into a suffix match
+for filenames such as `myindex.ts`.
 
-```sh
-fs-lint check-path src/auth-utils/index.ts
-```
-
-```text
-src/auth-utils/index.ts: error files/new: new file is not allowed by configuration
-```
-
-It blocks file types you did not allow:
-
-```sh
-fs-lint check-path src/auth/index.js
-```
-
-```text
-src/auth/index.js: error files/new: new file is not allowed by configuration
-```
-
-Use CLI patterns for one run:
+Use CLI patterns to test one run without changing config:
 
 ```sh
 fs-lint check-path src/auth/helper.ts --allow "src/**/helper.ts"
+```
+
+```diff
+  src/
+    auth/
++     helper.ts
+```
+
+```sh
 fs-lint check-path src/auth/schema.generated.ts --deny "src/**/*.generated.ts"
+```
+
+```diff
+  src/
+    auth/
+-     schema.generated.ts
 ```
 
 CLI patterns are appended after config patterns, in the order provided.
@@ -91,6 +91,9 @@ brew install yowainwright/tap/fs-lint
 ```
 
 ### From Source
+
+The Homebrew release integration test requires Ruby on your `PATH`. CMake
+omits that test when Ruby is unavailable.
 
 ```sh
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
@@ -219,16 +222,30 @@ legibility_status status =
 Configuration parsing, Git integration, and agent hooks stay outside the core
 library.
 
+## Roadmap
+
+- Agent integrations that pass proposed file paths before files are written.
+- Clearer reports for added files, rename destinations, and ignored changes.
+- More examples for standard glob allowlists and ordered `!` denials.
+- Release and Homebrew automation that stays reproducible from a version tag.
+
 ## Development
 
 ```sh
 ./scripts/setup.sh
 ```
 
-The hook setup installs a managed pre-commit hook. It runs shell checks, C
-formatting, and debug tests.
+The hook setup installs a managed pre-commit hook. It runs shell checks,
+`clang-format`, `clang-tidy`, and debug tests. Both C tools are required; see
+[development setup](.github/CONTRIBUTING.md#development-setup).
 
-Full local check:
+Run all pre-commit checks:
+
+```sh
+./scripts/setup.sh pre-commit
+```
+
+Release build and tests:
 
 ```sh
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_FLAGS=-Werror
@@ -248,5 +265,6 @@ binary assets also include Sigstore attestations.
 
 ## License
 
-MIT. See [LICENSE](./LICENSE). Release archives also include the bundled yyjson
-and tomlc17 MIT licenses.
+MIT. See [LICENSE](./LICENSE). Release archives also include the bundled
+[yyjson](https://github.com/ibireme/yyjson) and
+[tomlc17](https://github.com/cktan/tomlc17) MIT licenses.

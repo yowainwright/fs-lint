@@ -1,0 +1,8 @@
+# tomlc17 e0e8868546b4611a86fcdb284819e60866a3480b, page_create:
+# (size_t) & ((page_t *)0)->data[size] triggers Clang 18 UBSan on Linux.
+# Keep ASan and all other UBSan checks enabled, including in this function.
+# Remove this file and its CMake option after an upstream update replaces the
+# expression with offsetof(page_t, data) + (size_t)size.
+# https://github.com/cktan/tomlc17/blob/e0e8868546b4611a86fcdb284819e60866a3480b/src/tomlc17.c#L110
+[null]
+fun:page_create

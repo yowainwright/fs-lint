@@ -1,0 +1,22 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+readme_path, section_path, temp_path = ARGV
+
+readme = File.read(readme_path)
+section = File.read(section_path)
+start_marker = "<!-- formulas:start -->"
+end_marker = "<!-- formulas:end -->"
+block_pattern = /#{Regexp.escape(start_marker)}.*?#{Regexp.escape(end_marker)}/m
+section_pattern = /^### (?:\[fs-lint\]\([^)]+\)|fs-lint)\n.*?(?=^### |#{Regexp.escape(end_marker)})/m
+block = readme.match(block_pattern)&.to_s
+exit 2 unless block
+
+updated_block =
+  if block.match?(section_pattern)
+    block.sub(section_pattern, section)
+  else
+    block.sub(end_marker, "\n#{section}\n#{end_marker}")
+  end
+
+File.write(temp_path, readme.sub(block_pattern, updated_block))

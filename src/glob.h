@@ -7,8 +7,7 @@
 typedef struct legibility_glob_matcher legibility_glob_matcher;
 
 legibility_glob_matcher *legibility_glob_matcher_create(const char *const *patterns,
-                                                        size_t pattern_count,
-                                                        size_t max_path_length);
+                                                        size_t pattern_count);
 
 bool legibility_glob_matcher_allows(legibility_glob_matcher *matcher, const char *path,
                                     bool default_allowed);

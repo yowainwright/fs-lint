@@ -353,7 +353,53 @@ static void test_allows_maximum_path_with_globstar(void) {
   }
 }
 
+static void assert_glob_path(const char *const *patterns, size_t count,
+                             const char *path, legibility_status expected) {
+  const legibility_config config = {
+      .allow_patterns = patterns,
+      .allow_pattern_count = count,
+  };
+  captured_diagnostics captured = {0};
+  if (check(&config, path, &captured) != expected) {
+    fprintf(stderr, "unexpected glob result for %s\n", path);
+    exit(EXIT_FAILURE);
+  }
+}
+
+static void test_globstar_basename_boundaries(void) {
+  const char *patterns[] = {"src/**/{index,utils}.c"};
+  const char *allowed[] = {"src/index.c", "src/a/b/utils.c", "src/a\\index.c"};
+  const char *denied[] = {"src/myindex.c", "src/a/myindex.c", "src/notutils.c",
+                          "src/a\\notutils.c", "src/a/index.c.bak"};
+  for (size_t index = 0; index < sizeof(allowed) / sizeof(*allowed); index += 1) {
+    assert_glob_path(patterns, 1, allowed[index], LEGIBILITY_STATUS_OK);
+  }
+  for (size_t index = 0; index < sizeof(denied) / sizeof(*denied); index += 1) {
+    assert_glob_path(patterns, 1, denied[index], LEGIBILITY_STATUS_VIOLATIONS);
+  }
+}
+
+static void test_globstar_negation_boundaries(void) {
+  const char *patterns[] = {"**/*.c", "!**/index.c", "src/safe/**/index.c"};
+  assert_glob_path(patterns, 3, "index.c", LEGIBILITY_STATUS_VIOLATIONS);
+  assert_glob_path(patterns, 3, "src/a/index.c", LEGIBILITY_STATUS_VIOLATIONS);
+  assert_glob_path(patterns, 3, "src/myindex.c", LEGIBILITY_STATUS_OK);
+  assert_glob_path(patterns, 3, "src/safe/index.c", LEGIBILITY_STATUS_OK);
+  assert_glob_path(patterns, 3, "src/safe/a/index.c", LEGIBILITY_STATUS_OK);
+}
+
+static void test_backslash_globstar_boundaries(void) {
+  const char *patterns[] = {"src\\**\\index.c"};
+  assert_glob_path(patterns, 1, "src\\index.c", LEGIBILITY_STATUS_OK);
+  assert_glob_path(patterns, 1, "src/a\\index.c", LEGIBILITY_STATUS_OK);
+  assert_glob_path(patterns, 1, "src\\myindex.c", LEGIBILITY_STATUS_VIOLATIONS);
+  assert_glob_path(patterns, 1, "src/a\\myindex.c", LEGIBILITY_STATUS_VIOLATIONS);
+}
+
 int main(void) {
+  test_globstar_basename_boundaries();
+  test_globstar_negation_boundaries();
+  test_backslash_globstar_boundaries();
   test_denies_added_file();
   test_defaults_to_deny();
   test_allows_established_pattern();

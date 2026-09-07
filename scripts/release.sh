@@ -34,6 +34,7 @@ require_release_commands() {
   require_command brew
   require_command gh
   require_command git
+  require_command ruby
 }
 
 require_tap_dir() {
@@ -68,12 +69,68 @@ canonical_dir() {
   CDPATH='' cd -- "$path" && pwd
 }
 
+script_dir() {
+  CDPATH='' cd -- "$(dirname -- "$0")" && pwd
+}
+
 write_package() {
   tap_dir="${1:?}"
   version="${2:?}"
   package_path="$tap_dir/brews/fs-lint.json"
 
   package_metadata_json "$version" >"$package_path"
+}
+
+write_readme_section() {
+  printf '%s\n' \
+    '### [fs-lint](https://github.com/yowainwright/fs-lint)' \
+    '' \
+    'Enforce project file and folder structure.' \
+    '' \
+    "Install [fs-lint](Formula/fs-lint.rb) | \`Formula/fs-lint.rb\`" \
+    '' \
+    '```bash' \
+    'brew install yowainwright/tap/fs-lint' \
+    '```' \
+    '' \
+    'Usage' \
+    '' \
+    '```bash' \
+    'fs-lint check --staged' \
+    '```' \
+    '' \
+    '---'
+}
+
+fail_update_readme() {
+  section_file="${1:?}"
+  temp="${2:?}"
+
+  rm -f "$section_file" "$temp"
+  printf 'release: README.md missing formulas markers\n' >&2
+  exit 1
+}
+
+finish_update_readme() {
+  section_file="${1:?}"
+  temp="${2:?}"
+  readme="${3:?}"
+
+  rm -f "$section_file"
+  mv "$temp" "$readme"
+}
+
+update_readme() {
+  tap_dir="${1:?}"
+  readme="$tap_dir/README.md"
+  section_file="$(mktemp "$readme.section.XXXXXX")"
+  temp="$(mktemp "$readme.tmp.XXXXXX")"
+  update_script="$(script_dir)/update-tap-readme"
+
+  write_readme_section >"$section_file"
+  "$update_script" "$readme" "$section_file" "$temp" ||
+    fail_update_readme "$section_file" "$temp"
+  finish_update_readme "$section_file" "$temp" "$readme"
 }
 
 json_true() {
@@ -106,15 +163,9 @@ update_formula() {
   version="${2:?}"
 
   cd "$tap_dir"
-  [ -f Formula/fs-lint.rb ] || return_new_formula "$version"
-
-  scripts/update-formula fs-lint "$version"
-}
-
-return_new_formula() {
-  version="${1:?}"
-
-  scripts/new-formula fs-lint "$version"
+  formula_script=scripts/new-formula
+  [ -f Formula/fs-lint.rb ] && formula_script=scripts/update-formula
+  "$formula_script" fs-lint "$version"
 }
 
 validate_formula() {
@@ -136,7 +187,7 @@ open_pull_request() {
   cd "$tap_dir"
   prepare_pr_branch "$branch"
   stage_release_files
-  git diff --cached --quiet && return_current_formula
+  git diff --cached --quiet && return_current_formula && return 0
   publish_pr_branch "$branch" "$tag"
   open_or_show_pr "$tap_repository" "$branch" "$tag"
 }
@@ -183,7 +234,7 @@ open_or_show_pr() {
       --jq '.[0].url // ""'
   )"
 
-  [ -z "$pr_url" ] || return_existing_pr "$pr_url"
+  [ -n "$pr_url" ] && return_existing_pr "$pr_url" && return 0
 
   create_pull_request "$tap_repository" "$branch" "$tag"
 }
@@ -222,6 +273,7 @@ run_homebrew_pr() {
   require_tap_scripts "$tap_dir"
 
   write_package "$tap_dir" "$version"
+  update_readme "$tap_dir"
   update_formula "$tap_dir" "$version"
   validate_formula "$tap_dir"
   open_pull_request "$tap_dir" "$tag"

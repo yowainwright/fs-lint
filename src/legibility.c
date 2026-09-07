@@ -118,25 +118,12 @@ static const char *validate_input(const legibility_config *config,
   return validate_changes(changes, change_count);
 }
 
-static size_t find_max_path_length(const legibility_change *changes,
-                                   size_t change_count) {
-  size_t maximum = 0;
-  for (size_t index = 0; index < change_count; index += 1) {
-    const size_t length = strlen(changes[index].path);
-    maximum = length > maximum ? length : maximum;
-  }
-  return maximum;
-}
-
-static legibility_glob_matcher *create_matcher(const legibility_config *config,
-                                               const legibility_change *changes,
-                                               size_t change_count) {
+static legibility_glob_matcher *create_matcher(const legibility_config *config) {
   if (config->allow_pattern_count == 0) {
     return NULL;
   }
-  const size_t max_path_length = find_max_path_length(changes, change_count);
   return legibility_glob_matcher_create(config->allow_patterns,
-                                        config->allow_pattern_count, max_path_length);
+                                        config->allow_pattern_count);
 }
 
 static bool check_changes(legibility_glob_matcher *matcher, bool default_allowed,
@@ -169,7 +156,7 @@ static legibility_status check_denied_additions(const legibility_config *config,
                                                 legibility_reporter reporter,
                                                 void *user_data) {
   const bool default_allowed = config->new_files_default == LEGIBILITY_NEW_FILES_ALLOW;
-  legibility_glob_matcher *matcher = create_matcher(config, changes, change_count);
+  legibility_glob_matcher *matcher = create_matcher(config);
   const bool allocation_failed = config->allow_pattern_count > 0 && matcher == NULL;
   if (allocation_failed) {
     report_error("runtime/allocation", "", "could not allocate glob matcher", reporter,
