@@ -78,6 +78,36 @@ assert_custom_hooks_path_is_rejected() {
   reject_setup "custom hook path"
 }
 
+write_command_stub() {
+  target="${1:?}"
+  printf '#!/bin/sh\nexit 0\n' >"$target"
+  chmod 755 "$target"
+}
+
+prepare_preflight_path() {
+  preflight_path="$test_root/preflight-stubs"
+  mkdir -p "$preflight_path"
+  for command_name in cmake ctest shfmt shellcheck shellcheck-legibility clang-format; do
+    write_command_stub "$preflight_path/$command_name"
+  done
+}
+
+assert_missing_clang_tidy_is_reported() {
+  missing_clang_tidy="$test_root/missing-clang-tidy"
+  prepare_preflight_path
+  setup_output="$(
+    PATH="$preflight_path:$PATH" CLANG_TIDY="$missing_clang_tidy" \
+      "$repo/scripts/setup.sh" pre-commit 2>&1
+  )" &&
+    fail "missing clang-tidy was accepted"
+  printf '%s' "$setup_output" | grep -Fq 'setup: missing required command:' ||
+    fail "missing clang-tidy was not reported"
+  printf '%s' "$setup_output" | grep -Fq 'CLANG_TIDY' ||
+    fail "missing clang-tidy did not include override hint"
+  ! printf '%s' "$setup_output" | grep -Fq 'debug build' ||
+    fail "missing clang-tidy was reported after the build"
+}
+
 main() {
   setup_repo
   assert_initial_install
@@ -86,6 +116,7 @@ main() {
   assert_unmanaged_hook_is_preserved
   assert_symlink_hook_is_preserved
   assert_custom_hooks_path_is_rejected
+  assert_missing_clang_tidy_is_reported
   printf '%s\n' "setup test: passed"
 }
 

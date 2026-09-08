@@ -281,6 +281,35 @@ if(NOT submodule_base_error STREQUAL "")
   message(FATAL_ERROR "expected empty base submodule stderr: ${submodule_base_error}")
 endif()
 
+file(WRITE "${TEST_ROOT}/src/staged-helper.c" "int staged_helper(void) { return 1; }\n")
+run_git(add src/staged-helper.c)
+file(
+  WRITE
+  "${TEST_ROOT}/fs-lint.json"
+  "{\"version\":1,\"newFiles\":{\"default\":\"deny\",\"allow\":[\"src/**/*.c\"]}}"
+)
+run_git(add fs-lint.json)
+file(
+  WRITE
+  "${TEST_ROOT}/fs-lint.json"
+  "{\"version\":1,\"newFiles\":{\"default\":\"deny\"}}"
+)
+
+execute_process(
+  COMMAND "${FS_LINT}" check --staged --root "${TEST_ROOT}"
+  RESULT_VARIABLE staged_config_status
+  OUTPUT_VARIABLE staged_config_output
+  ERROR_VARIABLE staged_config_error
+)
+
+if(NOT staged_config_status EQUAL 0)
+  message(FATAL_ERROR "expected staged config to allow staged path: ${staged_config_error}")
+endif()
+
+if(NOT staged_config_output STREQUAL "" OR NOT staged_config_error STREQUAL "")
+  message(FATAL_ERROR "expected no diagnostic for staged config")
+endif()
+
 set(non_repo "${TEST_ROOT}-not-repo")
 get_filename_component(non_repo_parent "${non_repo}" DIRECTORY)
 file(REMOVE_RECURSE "${non_repo}")

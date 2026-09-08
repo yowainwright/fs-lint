@@ -56,6 +56,8 @@ set(
   "src/auth/helper.ts: error files/new: new file is not allowed by configuration\n"
 )
 assert_command(1 "${helper_denied}" check-path src/auth/helper.ts)
+assert_command(1 "${helper_denied}" check src/auth/helper.ts)
+assert_command(1 "${helper_denied}" check src/auth/helper.ts src/auth/index.ts)
 assert_command(
   0
   ""
@@ -70,6 +72,16 @@ assert_command(
   0
   ""
   check-path --allow "src/**/helper.ts" -- src/auth/helper.ts
+)
+assert_command(
+  0
+  ""
+  --allow "src/**/helper.ts" check src/auth/helper.ts
+)
+assert_command(
+  0
+  ""
+  check src/auth/helper.ts --allow "src/**/helper.ts"
 )
 
 string(
@@ -90,6 +102,11 @@ assert_command(
   ""
   check-path src/auth/schema.generated.ts --allow "src/**/*.generated.ts"
 )
+assert_command(
+  0
+  ""
+  --allow "src/**/*.generated.ts" check src/auth/schema.generated.ts
+)
 
 set(
   cli_denied
@@ -99,6 +116,11 @@ assert_command(
   1
   "${cli_denied}"
   check-path src/auth/index.ts --deny "src/auth/index.ts"
+)
+assert_command(
+  1
+  "${cli_denied}"
+  --deny "src/auth/index.ts" check src/auth/index.ts
 )
 assert_command(
   1
