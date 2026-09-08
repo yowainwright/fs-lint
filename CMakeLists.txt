@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.20)
 
-project(fs_lint VERSION 0.2.0 LANGUAGES C)
+project(fs_lint VERSION 0.2.1 LANGUAGES C)
 
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
@@ -47,6 +47,7 @@ add_executable(
   src/cli_output.c
   src/config.c
   src/discover.c
+  src/git_environment.c
   src/main.c
 )
 target_include_directories(fs-lint PRIVATE src)
@@ -149,6 +150,7 @@ if(BUILD_TESTING)
   add_fs_lint_e2e(explicit-config)
   add_fs_lint_e2e(cli-overrides)
   add_fs_lint_e2e(git-staged)
+  add_fs_lint_e2e(git-root-env)
   add_fs_lint_e2e(invalid-config)
   add_fs_lint_e2e(install)
   add_fs_lint_e2e(json-output)

@@ -19,5 +19,5 @@
 
 - [ ] Tests or fixtures cover the changed behavior.
 - [ ] Public CLI, configuration, or library behavior is documented.
-- [ ] `clang-format --dry-run --Werror include/*.h src/*.c src/*.h tests/*.c` passes.
+- [ ] `clang-format --style=file:scripts/.clang-format --dry-run --Werror include/*.h src/*.c src/*.h tests/*.c` passes.
 - [ ] `ctest --test-dir build --output-on-failure` passes.

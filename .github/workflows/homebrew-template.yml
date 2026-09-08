@@ -1,0 +1,37 @@
+name: Homebrew template
+
+on:
+  workflow_call:
+    outputs:
+      tap-sha:
+        description: Tap revision used for the formula audit
+        value: ${{ jobs.validate.outputs.tap-sha }}
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate generated formula versions
+    runs-on: macos-latest
+    outputs:
+      tap-sha: ${{ steps.audit.outputs.tap-sha }}
+    env:
+      HOMEBREW_NO_AUTO_UPDATE: "1"
+      HOMEBREW_NO_ANALYTICS: "1"
+      HOMEBREW_DEVELOPER: "1"
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          repository: yowainwright/homebrew-tap
+          path: homebrew-tap
+          persist-credentials: false
+      - name: Audit the tap template with Homebrew
+        id: audit
+        run: |
+          brew ruby tests/integration/homebrew_template_test.rb \
+          "$GITHUB_WORKSPACE/homebrew-tap/templates/binary-formula.rb.erb"
+          echo "tap-sha=$(git -C homebrew-tap rev-parse HEAD)" >> "$GITHUB_OUTPUT"

@@ -42,12 +42,21 @@ ctest --test-dir build --output-on-failure
 Format C sources before opening a pull request:
 
 ```sh
-clang-format -i include/*.h src/*.c src/*.h tests/*.c
+clang-format --style=file:scripts/.clang-format -i \
+  include/*.h src/*.c src/*.h tests/*.c
 ```
 
-The `.clang-tidy` configuration checks project C sources and headers for
-selected analyzer, bug-prone, and readability diagnostics. Its warnings fail
-the hook and CI. Vendored sources are excluded from these lint checks.
+The [`scripts/.clang-tidy`](../scripts/.clang-tidy) configuration checks project
+C sources and headers for selected analyzer, bug-prone, and readability
+diagnostics. Its warnings fail the hook and CI. Vendored sources are excluded
+from these lint checks.
+
+Both Clang configurations live in `scripts/`. Hooks and CI pass their paths
+explicitly. Editor integrations must also set clang-format's
+[`--style=file:<path>`](https://clang.llvm.org/docs/ClangFormatStyleOptions.html)
+and clang-tidy's
+[`--config-file=<path>`](https://clang.llvm.org/extra/clang-tidy/) to these files,
+using absolute paths if the editor runs tools outside the repository root.
 
 Run all pre-commit checks without making a commit:
 
@@ -61,6 +70,19 @@ the CI entry point for `shfmt`, ShellCheck, and `shellcheck-legibility`.
 CI also compiles with `-Werror` on GCC and Clang and runs AddressSanitizer and
 UndefinedBehaviorSanitizer on Linux.
 
+CI separately renders the Homebrew tap's actual formula template and checks
+version detection with Homebrew for three versions across all four release
+platforms. With an existing tap checkout, run that check locally with:
+
+```sh
+HOMEBREW_NO_AUTO_UPDATE=1 brew ruby tests/integration/homebrew_template_test.rb \
+  ../../devtools/homebrew-tap/templates/binary-formula.rb.erb
+```
+
+This check requires Homebrew and reads the template without modifying the tap.
+It uses placeholder checksums for the version audit; the release job still
+audits, installs, and tests the actual published binary.
+
 TOML parsing is included in sanitizer runs. Clang excludes only the UBSan null
 check in upstream tomlc17's `page_create`, whose offset calculation uses a null
 pointer. ASan and all other UBSan checks remain enabled. The target-specific
@@ -70,9 +92,10 @@ exception and its removal condition are recorded in
 ## Release
 
 Release automation runs from a pushed `vX.Y.Z` tag. The release workflow builds
-and tests the project, publishes the full binary asset matrix, then opens a
+and tests the project and validates the Homebrew template before publishing
+the full binary asset matrix. It then opens a
 formula update pull request against `yowainwright/homebrew-tap` using the tap's
-`scripts/new-formula` and `scripts/update-formula` API.
+`scripts/new-formula` and `scripts/update-formula` API at the validated tap revision.
 
 Create the release tag on the final merged commit after CI passes. Its version
 must match `project(fs_lint VERSION ...)` in `CMakeLists.txt`; the release build
@@ -92,7 +115,8 @@ gh workflow run release.yml --ref main -f tag=v0.2.0
 ```
 
 This uses the release scripts on `main` and the assets from the supplied tag.
-The manual run skips building and publishing GitHub release assets.
+The manual run skips building and publishing GitHub release assets and reads
+the tap's current default branch. It runs the real formula audit, install, and test.
 
 ## Changes
 

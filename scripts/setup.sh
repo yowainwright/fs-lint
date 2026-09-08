@@ -17,7 +17,7 @@ run_suite() {
 
 run_clang_tidy() {
   printf 'setup: clang-tidy\n'
-  set -- -p "$build_dir" src/*.c tests/*.c
+  set -- --config-file="$root/scripts/.clang-tidy" -p "$build_dir" src/*.c tests/*.c
   case "$(uname -s)" in
   Darwin)
     sdk_path="$(xcrun --sdk macosx --show-sdk-path)"
@@ -102,7 +102,8 @@ run_pre_commit() {
   git --no-pager diff --cached --check
   run_shell_checks
   printf 'setup: C format check\n'
-  clang-format --dry-run --Werror include/*.h src/*.c src/*.h tests/*.c
+  clang-format --style="file:$root/scripts/.clang-format" --dry-run --Werror \
+    include/*.h src/*.c src/*.h tests/*.c
   run_suite debug Debug
 }
 
