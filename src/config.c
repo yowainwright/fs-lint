@@ -202,7 +202,8 @@ static bool capture_git(const char *root, const char *const arguments[],
   if (read_output && output->data == NULL) {
     read_output = append_output(output, "", 0, config);
   }
-  return read_output && git_succeeded(identifier, config);
+  const bool git_output = git_succeeded(identifier, config);
+  return read_output && git_output;
 }
 
 static bool measure_config(FILE *stream, size_t *length, cli_config *config) {
