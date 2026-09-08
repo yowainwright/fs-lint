@@ -173,6 +173,9 @@ validate_formula() {
 
   cd "$tap_dir"
   brew tap yowainwright/tap "$PWD"
+  installed_formula_dir="$(brew --repository yowainwright/tap)/Formula"
+  mkdir -p "$installed_formula_dir"
+  cp Formula/fs-lint.rb "$installed_formula_dir/fs-lint.rb"
   brew audit --strict --online yowainwright/tap/fs-lint
   brew install yowainwright/tap/fs-lint
   brew test yowainwright/tap/fs-lint

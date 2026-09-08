@@ -83,6 +83,17 @@ The repository secret `HOMEBREW_TAP_TOKEN` must have contents and pull request
 write access to `yowainwright/homebrew-tap`. The tap automation scripts must be
 available on the tap's default branch before this workflow can update formulae.
 
+If publishing succeeds but the Homebrew job fails, merge release-script fixes
+here and any required CI fixes in `yowainwright/homebrew-tap`. Then retry only
+Homebrew against the existing release:
+
+```sh
+gh workflow run release.yml --ref main -f tag=v0.2.0
+```
+
+This uses the release scripts on `main` and the assets from the supplied tag.
+The manual run skips building and publishing GitHub release assets.
+
 ## Changes
 
 - Keep the policy library dependency-free C17.
