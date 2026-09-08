@@ -1,4 +1,4 @@
-# fs-lint
+# fs-lint ✎﹏
 
 <!-- project language and license matching CMakeLists.txt and LICENSE -->
 
@@ -7,17 +7,17 @@
 [![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 [![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](./.github/CONTRIBUTING.md)
 
-`fs-lint` lints your project's file and folder structure. It checks proposed
-paths against glob rules in your config.
+**fs-lint** lints your project's file and folder structure. Set the allowed
+paths with [glob rules](#glob-syntax) in your config.
 
-Use it in agent lifecycle hooks to stop one-off files before they enter the
-tree! It also works in Git hooks and CI.
+Use it in agent lifecycle hooks to catch one-off files! It also works in Git
+hooks and CI.
 
 ## How It Works
 
-`fs-lint` checks new files against a config:
+Save your rules in `fs-lint.json`:
 
-```json
+```jsonc
 {
   "version": 1,
   "newFiles": {
@@ -27,30 +27,29 @@ tree! It also works in Git hooks and CI.
 }
 ```
 
-It allows or errors based on that config:
+In the trees below, `+` means allowed and `-` means rejected. fs-lint reports
+violations without changing files.
 
 ```diff
   src/
-    auth/
-+     index.ts
-+     utils.ts
--     helper.ts
--     schema.generated.ts
-    auth-utils/
-+     index.ts
+  ├── auth/
++ │   ├── index.ts
++ │   ├── utils.ts
+- │   ├── helper.ts
+- │   └── schema.generated.ts
+  └── auth-utils/
++     └── index.ts
 ```
 
 That's it!
 
-`fs-lint` has a small CLI:
+Run `fs-lint` to validate your config:
 
 ```sh
 fs-lint
-fs-lint --allow "src/**/helper.ts"
-fs-lint --deny "src/**/*.generated.ts"
 ```
 
-In agent lifecycle hooks, I use it to keep file creation in bounds.
+In agent lifecycle hooks, I use `--staged` to check new paths before committing:
 
 ```diff
 "Stop": [
@@ -67,7 +66,7 @@ In agent lifecycle hooks, I use it to keep file creation in bounds.
 ]
 ```
 
-If an agent goes out of bounds:
+If a staged path breaks the rules, it prints an error and exits with code `1`:
 
 ```diff
 - src/auth/helper.ts: error files/new: new file is not allowed by configuration
@@ -82,13 +81,13 @@ You can use `**/` to match zero or more directories.
     "default": "deny",
     "allow": [
       "README.md",
-      "docs/**/*.md",
+      "docs/**/*.md"
     ]
   }
 }
 ```
 
-You can also use CLI patterns to test or override config.
+You can override rules for one run. Using the first config:
 
 ```sh
 fs-lint check src/auth/helper.ts --allow "src/**/helper.ts"
@@ -96,21 +95,21 @@ fs-lint check src/auth/helper.ts --allow "src/**/helper.ts"
 
 ```diff
   src/
-    auth/
-+     helper.ts
+  └── auth/
++     └── helper.ts
 ```
 
 ```sh
-fs-lint check src/auth/schema.generated.ts --deny "src/**/*.generated.ts"
+fs-lint check src/auth/index.ts --deny "src/auth/index.ts"
 ```
 
 ```diff
   src/
-    auth/
--     schema.generated.ts
+  └── auth/
+-     └── index.ts
 ```
 
-CLI patterns are appended after config patterns, in the order provided.
+CLI patterns follow config patterns in the order supplied. [More examples below](#cli).
 
 ---
 
@@ -124,8 +123,7 @@ brew install yowainwright/tap/fs-lint
 
 ### From Source
 
-The Homebrew release integration test requires Ruby on your `PATH`. CMake
-omits that test when Ruby is unavailable.
+Ruby is optional. Without it, CMake skips the Homebrew release integration test.
 
 ```sh
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
@@ -136,40 +134,231 @@ cmake --install build --prefix ./dist
 
 ---
 
-## CLI API
+## CLI
 
-```sh
-fs-lint [--root path] [--config path] [--format text|json] \
-  [--allow pattern] [--deny pattern]
+These examples use the first `fs-lint.json` config in [How It Works](#how-it-works).
+The trees show proposed paths: `+` means allowed and `-` means rejected.
+Successful checks are silent. Rejected paths produce an error.
 
-fs-lint check [--root path] [--config path] [--format text|json] \
-  [--allow pattern] [--deny pattern] [--] <path>...
+### `fs-lint`
 
-fs-lint check (--stdin0|--staged|--base ref) [--root path] [--config path] \
-  [--format text|json] [--allow pattern] [--deny pattern]
-
-fs-lint check-path [--root path] [--config path] [--format text|json] \
-  [--allow pattern] [--deny pattern] [--] <path>
-```
-
-Examples:
+Validates your config. Searches upward from the current directory to the Git
+repository root or filesystem root.
 
 ```sh
 fs-lint
-fs-lint --allow "src/**/helper.ts"
-fs-lint check src/auth/helper.ts src/auth/index.ts
-fs-lint check --staged
-fs-lint check --base origin/main
-git diff --name-only --diff-filter=A --no-renames -z | fs-lint check --stdin0
 ```
 
-With no subcommand, `fs-lint` validates the discovered config. `check` accepts
-explicit paths or exactly one source. `--stdin0` treats each NUL-delimited path
-as added. `--staged` checks added paths and staged config in the Git index.
-`--base` checks added paths on `HEAD` since its merge base with a Git ref.
+A valid config passes silently (exit `0`). Use `check` to check paths.
 
-Exit code `0` means allowed, `1` means policy violations, and `2` means usage
-or configuration error.
+### `fs-lint check`
+
+Checks one or more proposed paths. Files don't need to exist yet.
+
+```sh
+fs-lint check src/auth/index.ts src/auth/helper.ts
+```
+
+```diff
+  src/
+  └── auth/
++     ├── index.ts
+-     └── helper.ts
+```
+
+Rejects `helper.ts` (exit `1`). Use `--` before paths that start with `-`.
+
+### `fs-lint check --staged`
+
+Checks staged additions and rename destinations against the staged config. Use
+this in a Git hook.
+
+```sh
+fs-lint check --staged
+```
+
+If `index.ts` and `helper.ts` are staged as new files:
+
+```diff
+  src/
+  └── auth/
++     ├── index.ts
+-     └── helper.ts
+```
+
+Rejects `helper.ts` (exit `1`). Untracked files, unstaged additions, and edits to
+existing files are skipped.
+
+### `fs-lint check --base`
+
+Checks your branch's committed additions and rename destinations since its
+common ancestor with another Git ref. Useful in CI.
+
+```sh
+fs-lint check --base origin/main
+```
+
+If your branch added `utils.ts` and `helper.ts` since that point:
+
+```diff
+  src/
+  └── auth/
++     ├── utils.ts
+-     └── helper.ts
+```
+
+Rejects `helper.ts` (exit `1`). Uses your local config and excludes uncommitted
+changes.
+
+### `fs-lint check --allow`
+
+Allows a path your config would reject, for this run. Quote globs so your shell
+passes them unchanged.
+
+```sh
+fs-lint check src/auth/helper.ts --allow "src/**/helper.ts"
+```
+
+```diff
+  src/
+  └── auth/
++     └── helper.ts
+```
+
+Passes silently (exit `0`).
+
+### `fs-lint check --deny`
+
+Rejects a path your config would allow, for this run.
+
+```sh
+fs-lint check src/auth/index.ts --deny "src/auth/index.ts"
+```
+
+```diff
+  src/
+  └── auth/
+-     └── index.ts
+```
+
+Rejects `index.ts` (exit `1`). CLI patterns follow config patterns; the last
+matching pattern wins.
+
+### `fs-lint check --stdin0`
+
+Reads paths separated by NUL bytes (`\0`) from another command. This preserves
+spaces and newlines in filenames.
+
+```sh
+printf 'src/auth/index.ts\0src/auth/helper.ts\0' | fs-lint check --stdin0
+```
+
+```diff
+  src/
+  └── auth/
++     ├── index.ts
+-     └── helper.ts
+```
+
+Rejects `helper.ts` (exit `1`). Each supplied path counts as a new file.
+Choose one input per run: explicit paths, `--stdin0`, `--staged`, or `--base`.
+
+### `fs-lint check-path`
+
+Checks exactly one proposed path.
+
+```sh
+fs-lint check-path src/auth/index.ts
+```
+
+```diff
+  src/
+  └── auth/
++     └── index.ts
+```
+
+Passes silently (exit `0`).
+
+### `fs-lint check --root`
+
+Starts config discovery in another directory. Here, `packages/app` contains the
+opening config:
+
+```sh
+fs-lint check --root packages/app src/auth/index.ts
+```
+
+```diff
+  packages/
+  └── app/
+      ├── fs-lint.json
+      └── src/
+          └── auth/
++             └── index.ts
+```
+
+Passes silently (exit `0`). The matched path is `src/auth/index.ts`; `--root`
+doesn't change the supplied path.
+
+### `fs-lint check --config`
+
+Selects a config file. Save the opening config as `config/fs-lint.json` for this
+example:
+
+```sh
+fs-lint check --config config/fs-lint.json src/auth/index.ts
+```
+
+```diff
+  .
+  ├── config/
+  │   └── fs-lint.json
+  └── src/
+      └── auth/
++         └── index.ts
+```
+
+Passes silently (exit `0`). Relative config paths start at `--root`, which
+defaults to the current directory.
+
+### `fs-lint check --format json`
+
+Prints one JSON object per diagnostic for agents and CI.
+
+```sh
+fs-lint check src/auth/index.ts src/auth/helper.ts --format json
+```
+
+```diff
+  src/
+  └── auth/
++     ├── index.ts
+-     └── helper.ts
+```
+
+Prints this diagnostic on one line (exit `1`):
+
+```jsonc
+{"severity":"error","code":"files/new","path":"src/auth/helper.ts","message":"new file is not allowed by configuration"}
+```
+
+### `fs-lint --help`
+
+Prints the available commands and options.
+
+```sh
+fs-lint --help
+```
+
+Exits with code `0`. Use `fs-lint --version` to print the installed version.
+
+### Exit codes
+
+| Code | Meaning |
+| --- | --- |
+| `0` | Config is valid and all supplied paths are allowed |
+| `1` | One or more paths are rejected |
+| `2` | Usage, configuration, or input error |
 
 ---
 
@@ -177,7 +366,7 @@ or configuration error.
 
 Use `.fs-lintrc` or `fs-lint.json` for JSON:
 
-```json
+```jsonc
 {
   "version": 1,
   "newFiles": {
@@ -239,8 +428,7 @@ Forward and backward slashes are treated as path separators.
 ## Library
 
 Source installs include `include/legibility.h`, `liblegibility.a`, and CMake
-package files. The C library is available for early integrations, but its API
-is preview until `1.0`.
+package files. The C API is in preview until `1.0`.
 
 ```cmake
 find_package(legibility 0.2 CONFIG REQUIRED)
@@ -276,8 +464,8 @@ library.
 ./scripts/setup.sh
 ```
 
-The hook setup installs a managed pre-commit hook. It runs shell checks,
-`clang-format`, `clang-tidy`, and debug tests. Both C tools are required; see
+Installs a managed pre-commit hook that runs shell checks, `clang-format`,
+`clang-tidy`, and debug tests. Both C tools are required; see
 [development setup](.github/CONTRIBUTING.md#development-setup).
 
 ## Release
