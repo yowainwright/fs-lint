@@ -412,14 +412,14 @@ that start with `!` deny it again.
 
 Patterns match the complete path.
 
-| Pattern | Meaning |
-| --- | --- |
-| `?` | One non-separator character |
-| `*` | Zero or more characters within one path segment |
-| `**` | Zero or more characters across path segments |
-| `**/` | Zero or more complete directories |
-| `{a,b}` | One of the comma-separated alternatives |
-| `!` | Deny a matching path after earlier allows |
+| Pattern | Meaning | Example |
+| --- | --- | --- |
+| `?` | One non-separator character | `src/?.c` → `src/a.c` |
+| `*` | Zero or more characters within one path segment | `src/*.h` → `src/main.h` |
+| `**` | Zero or more characters across path segments | `docs/**` → `docs/api/http.md` |
+| `**/` | Zero or more complete directories | `lib/**/index.c` → `lib/index.c` or `lib/ui/index.c` |
+| `{a,b}` | One of the comma-separated alternatives | `native/**/*.{c,h,cpp}` → `native/main.cpp` |
+| `!` | Deny a matching path after earlier allows | `!**/*.generated.*` → `src/schema.generated.ts` (rejected) |
 
 Forward and backward slashes are treated as path separators.
 
