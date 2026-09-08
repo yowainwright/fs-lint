@@ -4,6 +4,12 @@ on:
   push:
     tags:
       - v*
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag to publish to Homebrew
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -11,6 +17,7 @@ permissions:
 jobs:
   source:
     name: Source release
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
@@ -34,6 +41,7 @@ jobs:
 
   build:
     name: ${{ matrix.asset_os }}-${{ matrix.asset_arch }} release
+    if: github.event_name == 'push'
     permissions:
       attestations: write
       contents: read
@@ -127,27 +135,27 @@ jobs:
 
   homebrew:
     name: Open Homebrew tap PR
-    needs:
-      - build
-      - publish
+    if: >-
+      ${{ !cancelled() &&
+          (github.event_name == 'workflow_dispatch' || needs.publish.result == 'success') }}
+    needs: publish
     runs-on: macos-latest
     env:
       GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
       TAP_REPOSITORY: yowainwright/homebrew-tap
+      RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
     steps:
       - name: Require tap token
         run: test -n "$GH_TOKEN"
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
           persist-credentials: false
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
-        with:
-          path: release
-          merge-multiple: true
+      - name: Verify published release
+        run: gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY"
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
           repository: ${{ env.TAP_REPOSITORY }}
           token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
           path: homebrew-tap
       - name: Update formula
-        run: scripts/release.sh homebrew-pr homebrew-tap "$GITHUB_REF_NAME"
+        run: scripts/release.sh homebrew-pr homebrew-tap "$RELEASE_TAG"

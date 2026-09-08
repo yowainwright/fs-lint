@@ -4,6 +4,7 @@ set -eu
 source_root="$(CDPATH='' cd -- "$(dirname -- "$0")/../.." && pwd)"
 test_root="$(mktemp -d "${TMPDIR:-/tmp}/fs-lint-release.XXXXXX")"
 tap="$test_root/homebrew-tap"
+brew_tap="$test_root/installed-tap"
 bin="$test_root/bin"
 command_log="$test_root/commands.log"
 release_output="$test_root/release.out"
@@ -64,7 +65,18 @@ SCRIPT
 write_brew_stub() {
   cat >"$bin/brew" <<'SCRIPT'
 #!/bin/sh
-exit 0
+set -eu
+printf 'brew %s\n' "$*" >>"${COMMAND_LOG:?}"
+formula_dir="${BREW_TEST_TAP_DIR:?}/Formula"
+case "$1" in
+tap) mkdir -p "$formula_dir" ;;
+--repository) printf '%s\n' "$BREW_TEST_TAP_DIR" ;;
+audit|install|test)
+  cmp "$formula_dir/fs-lint.rb" Formula/fs-lint.rb
+  [ "$1" != audit ] || exit "${STUB_BREW_AUDIT_STATUS:-0}"
+  ;;
+*) exit 2 ;;
+esac
 SCRIPT
   chmod +x "$bin/brew"
 }
@@ -110,6 +122,7 @@ setup_tap() {
 run_release() {
   : >"$command_log"
   PATH="$bin:$PATH" GH_TOKEN=test COMMAND_LOG="$command_log" \
+    BREW_TEST_TAP_DIR="$brew_tap" STUB_BREW_AUDIT_STATUS="${STUB_BREW_AUDIT_STATUS:-0}" \
     STUB_DIFF_STATUS="${1:?}" STUB_PR_URL="${2-}" \
     TAP_REPOSITORY=yowainwright/homebrew-tap \
     "$source_root/scripts/release.sh" homebrew-pr "$tap" v0.2.0 >"$release_output"
@@ -126,6 +139,9 @@ assert_release_updates_readme() {
   assert_command 'git commit '
   assert_command 'git push '
   assert_command 'gh pr create '
+  assert_command 'brew audit --strict --online yowainwright/tap/fs-lint'
+  assert_command 'brew install yowainwright/tap/fs-lint'
+  assert_command 'brew test yowainwright/tap/fs-lint'
 }
 
 assert_command() {
@@ -137,6 +153,7 @@ assert_no_command() {
 }
 
 assert_current_formula_stops() {
+  printf 'stale formula\n' >"$brew_tap/Formula/fs-lint.rb"
   STUB_COMMIT_STATUS=1 run_release 0 ''
   assert_command 'update-formula'
   assert_no_command 'new-formula'
@@ -156,11 +173,21 @@ assert_existing_pr_is_reused() {
   assert_no_command 'gh pr create '
 }
 
+assert_failed_audit_stops_publication() {
+  STUB_BREW_AUDIT_STATUS=1 run_release 1 '' && fail 'failed audit was accepted'
+  assert_command 'brew audit '
+  assert_no_command 'brew install '
+  assert_no_command 'git commit '
+  assert_no_command 'git push '
+  assert_no_command 'gh pr '
+}
+
 main() {
   setup_tap
   assert_release_updates_readme
   assert_current_formula_stops
   assert_existing_pr_is_reused
+  assert_failed_audit_stops_publication
   printf '%s\n' "release test: passed"
 }
 
