@@ -137,6 +137,7 @@ if(BUILD_TESTING)
       COMMAND
         ${CMAKE_COMMAND}
         -DFS_LINT=$<TARGET_FILE:fs-lint>
+        -DFS_LINT_EXPECTED_VERSION=${PROJECT_VERSION}
         -DTEST_ROOT=${test_root}
         -DPROJECT_BUILD_DIR=${CMAKE_CURRENT_BINARY_DIR}
         -P ${test_script}

@@ -71,7 +71,10 @@ jobs:
       - name: Verify tag version
         run: |
           expected="v$(./build/fs-lint --version | awk '{print $2}')"
-          test "$GITHUB_REF_NAME" = "$expected"
+          if [ "$GITHUB_REF_NAME" != "$expected" ]; then
+            printf '::error::Release tag %s does not match compiled version %s. Update CMakeLists.txt before tagging.\n' "$GITHUB_REF_NAME" "$expected"
+            exit 1
+          fi
       - name: Package
         id: package
         run: |
