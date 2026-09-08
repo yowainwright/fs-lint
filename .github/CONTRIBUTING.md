@@ -72,7 +72,8 @@ UndefinedBehaviorSanitizer on Linux.
 
 CI separately renders the Homebrew tap's actual formula template and checks
 version detection with Homebrew for three versions across all four release
-platforms. With an existing tap checkout, run that check locally with:
+platforms, for both raw binaries and archives. With an existing tap checkout,
+run that check locally with:
 
 ```sh
 HOMEBREW_NO_AUTO_UPDATE=1 brew ruby tests/integration/homebrew_template_test.rb \
