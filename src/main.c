@@ -1,6 +1,7 @@
 #include "changes.h"
 #include "cli_output.h"
 #include "config.h"
+#include "git_environment.h"
 #include "legibility.h"
 
 #include <stdbool.h>
@@ -404,7 +405,20 @@ static bool load_batch_changes(const cli_arguments *arguments, cli_changes *chan
   return cli_changes_read_git_base(arguments->root, arguments->base, changes);
 }
 
+static bool prepare_git_environment(const cli_arguments *arguments) {
+  if (arguments->stdin0 || cli_git_prepare_environment(arguments->root)) {
+    return true;
+  }
+  cli_output output = {.format = arguments->format, .stream = stdout};
+  report_cli_error("input/invalid", "", "could not prepare Git repository environment",
+                   &output);
+  return false;
+}
+
 static int check_batch(const cli_arguments *arguments) {
+  if (!prepare_git_environment(arguments)) {
+    return LEGIBILITY_STATUS_ERROR;
+  }
   cli_changes changes;
   const bool loaded = load_batch_changes(arguments, &changes);
   if (!loaded) {

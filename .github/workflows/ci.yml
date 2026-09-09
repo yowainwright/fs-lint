@@ -13,6 +13,9 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  homebrew-template:
+    uses: ./.github/workflows/homebrew-template.yml
+
   build:
     name: ${{ matrix.system }} / ${{ matrix.compiler }}
     strategy:
@@ -90,6 +93,7 @@ jobs:
           sudo apt-get install --yes clang-format-18
       - run: >-
           clang-format-18 --dry-run --Werror
+          --style=file:scripts/.clang-format
           include/*.h src/*.c src/*.h tests/*.c
 
   lint:
@@ -109,7 +113,9 @@ jobs:
           -DCMAKE_BUILD_TYPE=Debug
           -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
       - name: Lint C sources and headers
-        run: clang-tidy-18 -p build-lint src/*.c tests/*.c
+        run: >-
+          clang-tidy-18 --config-file=scripts/.clang-tidy
+          -p build-lint src/*.c tests/*.c
 
   shell:
     name: Shell format and lint

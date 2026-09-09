@@ -300,6 +300,12 @@ fs-lint check --root packages/app src/auth/index.ts
 Passes silently (exit `0`). The matched path is `src/auth/index.ts`; `--root`
 doesn't change the supplied path.
 
+With `--staged` or `--base`, Git reads the repository containing `--root`.
+Repository-local Git environment variables inherited from another repository
+are cleared. An alternate `GIT_INDEX_FILE` and object stores supplied through
+`GIT_ALTERNATE_OBJECT_DIRECTORIES` are preserved when checking the same
+repository, including when `--root` names a subdirectory.
+
 ### `fs-lint check --config`
 
 Selects a config file. Save the opening config as `config/fs-lint.json` for this
@@ -453,10 +459,17 @@ library.
 
 ## Roadmap
 
-- Agent integrations that pass proposed file paths before files are written.
-- Clearer reports for added files, rename destinations, and ignored changes.
-- More examples for standard glob allowlists and ordered `!` denials.
-- Release and Homebrew automation that stays reproducible from a version tag.
+This is the current release plan; older notes in `tmp/` are historical snapshots.
+
+| Release | Status | Scope |
+| --- | --- | --- |
+| `v0.2.0` | Released | Proposed-path checks, standard glob allowlists, JSON/TOML configuration, C library, and Homebrew distribution. |
+| `v0.2.1` | In development | Isolate Git environments across repositories, preserve alternate indexes, and audit generated Homebrew formula versions before publishing. |
+| `v0.3.0` | Planned | Opt-in existing-tree path auditing. Proposed-change checks remain the default. |
+| Later | Proposed | Reviewable configuration generation, agent integrations before file creation, clearer diagnostics, and advisory cleanup reports. |
+
+Existing-tree command syntax and configuration generation need design review
+before implementation. Source-code and import analysis stay in `src-lint`.
 
 ## Development
 
