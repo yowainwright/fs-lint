@@ -72,13 +72,15 @@ function(check_from_caller root mode path)
   endif()
 endfunction()
 
-foreach(variable IN ITEMS GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY)
+foreach(variable IN ITEMS GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR
+    GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES)
   set(value "${caller}/.git")
   if(variable STREQUAL "GIT_WORK_TREE")
     set(value "${caller}")
   elseif(variable STREQUAL "GIT_INDEX_FILE")
     set(value "${caller}/.git/index")
-  elseif(variable STREQUAL "GIT_OBJECT_DIRECTORY")
+  elseif(variable STREQUAL "GIT_OBJECT_DIRECTORY" OR
+      variable STREQUAL "GIT_ALTERNATE_OBJECT_DIRECTORIES")
     set(value "${caller}/.git/objects")
   endif()
   set(ENV{${variable}} "${value}")
@@ -132,3 +134,65 @@ set(ENV{GIT_DIR} "${target}/.git")
 set(ENV{GIT_WORK_TREE} "${target}")
 set(ENV{GIT_INDEX_FILE} "${target}/.git/alternate-index")
 check_from_caller("${worktree}" "--staged" "src/worktree-staged.c")
+
+# Required objects live only in an alternate store resolved by Git's repository setup.
+set(objects "${TEST_ROOT}/objects-shared")
+file(RENAME "${target}/.git/objects" "${objects}")
+file(MAKE_DIRECTORY "${target}/.git/objects" "${TEST_ROOT}/objects-empty")
+set(ENV{GIT_DIR} ".git")
+set(ENV{GIT_WORK_TREE} ".")
+set(ENV{GIT_INDEX_FILE} ".git/alternate-index")
+set(alternate_cwd "${target}")
+
+function(check_alternates root mode expected_status expected_output)
+  execute_process(
+    COMMAND "${FS_LINT}" check ${mode} --root "${root}"
+    WORKING_DIRECTORY "${alternate_cwd}"
+    RESULT_VARIABLE status OUTPUT_VARIABLE output ERROR_VARIABLE error
+  )
+  if(NOT status EQUAL expected_status OR NOT output STREQUAL expected_output OR
+      NOT error STREQUAL "")
+    message(FATAL_ERROR "alternate objects lost for ${mode} at ${root} (${status}): ${output}${error}")
+  endif()
+endfunction()
+
+set(expected "src/target-committed.c: error files/new: new file is not allowed by configuration\n")
+foreach(alternates IN ITEMS "../objects-shared" "${objects}"
+    ":${TEST_ROOT}/objects-empty:../objects-shared:")
+  set(ENV{GIT_ALTERNATE_OBJECT_DIRECTORIES} "${alternates}")
+  foreach(root IN ITEMS "." "src")
+    check_alternates("${root}" "--staged" 0 "")
+    check_alternates("${root}" "--base;HEAD~1" 1 "${expected}")
+  endforeach()
+endforeach()
+
+# Git resolves alternates from the metadata directory when invoked inside .git.
+unset(ENV{GIT_DIR})
+unset(ENV{GIT_WORK_TREE})
+set(ENV{GIT_INDEX_FILE} "alternate-index")
+set(alternate_cwd "${target}/.git")
+set(ENV{GIT_ALTERNATE_OBJECT_DIRECTORIES} "${objects}")
+check_alternates("${target}" "--staged" 0 "")
+check_alternates("${target}/src" "--base;HEAD~1" 1 "${expected}")
+set(ENV{GIT_ALTERNATE_OBJECT_DIRECTORIES} "../../objects-shared")
+check_alternates("${target}" "--staged" 0 "")
+check_alternates("${target}/src" "--base;HEAD~1" 1 "${expected}")
+
+# From a worktree subdirectory, Git resolves alternates from the worktree root.
+set(ENV{GIT_INDEX_FILE} "../.git/alternate-index")
+set(ENV{GIT_ALTERNATE_OBJECT_DIRECTORIES} "../objects-shared")
+set(alternate_cwd "${target}/src")
+check_alternates("${target}" "--staged" 0 "")
+check_alternates("${target}" "--base;HEAD~1" 1 "${expected}")
+
+# Git accepts C-quoted list entries, including delimiters and escaped characters.
+foreach(name IN ITEMS "objects:with space" "objects\"with\\escapes\n")
+  file(RENAME "${objects}" "${TEST_ROOT}/${name}")
+  set(objects "${TEST_ROOT}/${name}")
+  string(REPLACE "\\" "\\\\" quoted "../${name}")
+  string(REPLACE "\"" "\\\"" quoted "${quoted}")
+  string(REPLACE "\n" "\\n" quoted "${quoted}")
+  set(ENV{GIT_ALTERNATE_OBJECT_DIRECTORIES} "${TEST_ROOT}/objects-empty:\"${quoted}\"")
+  check_alternates("${target}/src" "--staged" 0 "")
+  check_alternates("${target}/src" "--base;HEAD~1" 1 "${expected}")
+endforeach()

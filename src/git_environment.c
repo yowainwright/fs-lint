@@ -29,7 +29,7 @@ static bool clear_environment(const git_environment *environment) {
   return true;
 }
 
-static void query_child(const char *root, const char *option,
+static void query_child(const char *root, const char *command, const char *option,
                         const git_environment *environment, FILE *output) {
   const bool cleared = environment == NULL || clear_environment(environment);
   const bool directory_ready = chdir(root) == 0;
@@ -38,7 +38,7 @@ static void query_child(const char *root, const char *option,
   if (!cleared || !directory_ready || !output_ready) {
     _exit(127);
   }
-  execlp("git", "git", "rev-parse", option, (char *)NULL);
+  execlp("git", "git", command, option, (char *)NULL);
   _exit(127);
 }
 
@@ -51,28 +51,34 @@ static bool query_succeeded(pid_t identifier) {
   return result == identifier && WIFEXITED(status) && WEXITSTATUS(status) == 0;
 }
 
-static bool read_query(FILE *output, char *buffer, size_t capacity) {
-  if (fseek(output, 0, SEEK_SET) != 0) {
+static FILE *query_git(const char *root, const char *command, const char *option,
+                       const git_environment *environment) {
+  FILE *output = tmpfile();
+  if (output == NULL) {
+    return NULL;
+  }
+  const pid_t identifier = fork();
+  if (identifier == 0) {
+    query_child(root, command, option, environment, output);
+  }
+  const bool succeeded = identifier > 0 && query_succeeded(identifier);
+  if (!succeeded || fseek(output, 0, SEEK_SET) != 0) {
+    fclose(output);
+    return NULL;
+  }
+  return output;
+}
+
+static bool rev_parse(const char *root, const char *option,
+                      const git_environment *environment, char *buffer,
+                      size_t capacity) {
+  FILE *output = query_git(root, "rev-parse", option, environment);
+  if (output == NULL) {
     return false;
   }
   const size_t length = fread(buffer, 1, capacity - 1, output);
   buffer[length] = '\0';
-  return !ferror(output) && length < capacity - 1;
-}
-
-static bool query_git(const char *root, const char *option,
-                      const git_environment *environment, char *buffer,
-                      size_t capacity) {
-  FILE *output = tmpfile();
-  if (output == NULL) {
-    return false;
-  }
-  const pid_t identifier = fork();
-  if (identifier == 0) {
-    query_child(root, option, environment, output);
-  }
-  const bool succeeded = identifier > 0 && query_succeeded(identifier);
-  const bool captured = succeeded && read_query(output, buffer, capacity);
+  const bool captured = !ferror(output) && length < capacity - 1;
   fclose(output);
   return captured;
 }
@@ -89,7 +95,7 @@ static bool remember_variable(git_environment *environment, const char *name) {
 }
 
 static bool read_environment(git_environment *environment) {
-  if (!query_git(".", "--local-env-vars", NULL, environment->names,
+  if (!rev_parse(".", "--local-env-vars", NULL, environment->names,
                  sizeof(environment->names))) {
     return false;
   }
@@ -108,9 +114,9 @@ static bool same_repository(const char *root, const git_environment *environment
   char current[LEGIBILITY_MAX_PATH_LENGTH + 2];
   char target[LEGIBILITY_MAX_PATH_LENGTH + 2];
   const bool current_found =
-      query_git(".", "--absolute-git-dir", NULL, current, sizeof(current));
+      rev_parse(".", "--absolute-git-dir", NULL, current, sizeof(current));
   const bool target_found =
-      query_git(root, "--absolute-git-dir", environment, target, sizeof(target));
+      rev_parse(root, "--absolute-git-dir", environment, target, sizeof(target));
   return current_found && target_found && strcmp(current, target) == 0;
 }
 
@@ -144,6 +150,62 @@ static bool preserve_relative_paths(const char *directory) {
   return true;
 }
 
+static bool write_alternate(FILE *output, char *line) {
+  const char prefix[] = "alternate: ";
+  if (strncmp(line, prefix, sizeof(prefix) - 1) != 0) {
+    return true;
+  }
+  line[strcspn(line, "\n")] = '\0';
+  const char *path = line + sizeof(prefix) - 1;
+  const long position = ftell(output);
+  const char *separator = position == 0 ? "" : ":";
+  // Git's C-quoted paths are valid environment entries; quote other paths for ':'.
+  const char *quote = path[0] == '"' ? "" : "\"";
+  return position >= 0 &&
+         fprintf(output, "%s%s%s%s", separator, quote, path, quote) >= 0;
+}
+
+static bool copy_alternates(FILE *input, FILE *output) {
+  char *line = NULL;
+  size_t capacity = 0;
+  bool copied = true;
+  while (copied && getline(&line, &capacity, input) != -1) {
+    copied = write_alternate(output, line);
+  }
+  free(line);
+  return copied && feof(input) && !ferror(input);
+}
+
+static bool store_alternates(FILE *input) {
+  char *value = NULL;
+  size_t length = 0;
+  FILE *output = open_memstream(&value, &length);
+  if (output == NULL) {
+    return false;
+  }
+  const bool copied = copy_alternates(input, output);
+  const bool closed = fclose(output) == 0;
+  const bool stored =
+      copied && closed && setenv("GIT_ALTERNATE_OBJECT_DIRECTORIES", value, 1) == 0;
+  free(value);
+  return stored;
+}
+
+static bool preserve_alternates(void) {
+  const char *value = getenv("GIT_ALTERNATE_OBJECT_DIRECTORIES");
+  if (value == NULL || value[0] == '\0') {
+    return true;
+  }
+  // Git resolves and quotes alternates: https://git-scm.com/docs/git-count-objects
+  FILE *output = query_git(".", "count-objects", "-v", NULL);
+  if (output == NULL) {
+    return false;
+  }
+  const bool stored = store_alternates(output);
+  fclose(output);
+  return stored;
+}
+
 bool cli_git_prepare_environment(const char *root) {
   git_environment environment = {0};
   if (!read_environment(&environment)) {
@@ -156,7 +218,8 @@ bool cli_git_prepare_environment(const char *root) {
     return clear_environment(&environment);
   }
   char *directory = getcwd(NULL, 0);
-  const bool preserved = directory != NULL && preserve_relative_paths(directory);
+  const bool preserved =
+      directory != NULL && preserve_alternates() && preserve_relative_paths(directory);
   free(directory);
   return preserved;
 }

@@ -302,7 +302,8 @@ doesn't change the supplied path.
 
 With `--staged` or `--base`, Git reads the repository containing `--root`.
 Repository-local Git environment variables inherited from another repository
-are cleared. An alternate `GIT_INDEX_FILE` is preserved when checking the same
+are cleared. An alternate `GIT_INDEX_FILE` and object stores supplied through
+`GIT_ALTERNATE_OBJECT_DIRECTORIES` are preserved when checking the same
 repository, including when `--root` names a subdirectory.
 
 ### `fs-lint check --config`
