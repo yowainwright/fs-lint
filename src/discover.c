@@ -2,6 +2,7 @@
 
 #include "discover.h"
 
+#include <errno.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -20,6 +21,11 @@ static char *join_path(const char *root, const char *name) {
 static bool path_exists(const char *path) {
   struct stat details;
   return stat(path, &details) == 0;
+}
+
+static bool config_path_missing(const char *path) {
+  struct stat details;
+  return lstat(path, &details) == -1 && errno == ENOENT;
 }
 
 static bool reached_repository_root(const char *directory) {
@@ -66,7 +72,7 @@ static char *find_in_directory(const char *directory, char *error, size_t error_
       snprintf(error, error_size, "could not allocate configuration path");
       return NULL;
     }
-    if (!path_exists(candidate)) {
+    if (config_path_missing(candidate)) {
       free(candidate);
       continue;
     }

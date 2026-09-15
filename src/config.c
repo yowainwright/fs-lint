@@ -258,21 +258,6 @@ static char *load_config_data(const char *path, size_t *length, cli_config *conf
   return NULL;
 }
 
-static yyjson_doc *load_document(const char *path, cli_config *config) {
-  size_t length = 0;
-  char *data = load_config_data(path, &length, config);
-  if (data == NULL) {
-    return NULL;
-  }
-  yyjson_read_err error;
-  yyjson_doc *document = yyjson_read_opts(data, length, 0, NULL, &error);
-  free(data);
-  if (document == NULL) {
-    fail(config, error.msg);
-  }
-  return document;
-}
-
 static yyjson_doc *load_document_data(const char *data, size_t length,
                                       cli_config *config) {
   yyjson_read_err error;
@@ -608,39 +593,6 @@ static bool read_toml_new_files(toml_datum_t root, cli_config *config) {
   return read_toml_default(new_files, config) && read_toml_allow(new_files, config);
 }
 
-static bool parse_toml_document(const char *path, cli_config *config) {
-  size_t length = 0;
-  char *data = load_config_data(path, &length, config);
-  if (data == NULL) {
-    return false;
-  }
-
-  toml_result_t document = toml_parse_named(data, (int)length, path);
-  free(data);
-  if (!document.ok) {
-    const bool valid = fail(config, document.errmsg);
-    toml_free(document);
-    return valid;
-  }
-  bool valid = validate_toml_root_keys(document.toptab, config);
-  if (valid) {
-    valid = read_toml_version(document.toptab, config) &&
-            read_toml_new_files(document.toptab, config);
-  }
-  toml_free(document);
-  return valid;
-}
-
-static bool parse_json_path(const char *path, cli_config *config) {
-  yyjson_doc *document = load_document(path, config);
-  if (document == NULL) {
-    return false;
-  }
-  const bool valid = parse_json_document(document, config);
-  yyjson_doc_free(document);
-  return valid;
-}
-
 static bool parse_json_data(const char *data, size_t length, cli_config *config) {
   yyjson_doc *document = load_document_data(data, length, config);
   if (document == NULL) {
@@ -677,10 +629,14 @@ static bool parse_config_data(const char *path, const char *data, size_t length,
 }
 
 static bool parse_config_path(const char *path, cli_config *config) {
-  if (is_toml_path(path)) {
-    return parse_toml_document(path, config);
+  size_t length = 0;
+  char *data = load_config_data(path, &length, config);
+  if (data == NULL) {
+    return false;
   }
-  return parse_json_path(path, config);
+  const bool parsed = parse_config_data(path, data, length, config);
+  free(data);
+  return parsed;
 }
 
 static bool handle_missing_path(const char *root, cli_config *config) {
