@@ -145,6 +145,9 @@ Successful checks are silent. Rejected paths produce an error.
 Validates your config. Searches upward from the current directory to the Git
 repository root or filesystem root.
 
+A dangling configuration symlink is an error (exit `2`); discovery does not skip
+it to use a parent configuration.
+
 ```sh
 fs-lint
 ```
