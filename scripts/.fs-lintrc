@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "newFiles": {
+    "default": "deny",
+    "allow": [
+      "{README,AGENTS}.md",
+      "LICENSE",
+      "CMakeLists.txt",
+      ".gitignore",
+      ".github/CODEOWNERS",
+      ".github/*.md",
+      ".github/*.{yml,yaml}",
+      ".github/{workflows,ISSUE_TEMPLATE}/*.{yml,yaml}",
+      "cmake/*.{cmake,cmake.in}",
+      "cmake/tomlc17-sanitizer-ignorelist.txt",
+      "include/*.h",
+      "src/*.{c,h}",
+      "scripts/*.sh",
+      "scripts/.clang-{format,tidy}",
+      "scripts/.fs-lintrc",
+      "scripts/.shellcheckrc",
+      "scripts/.shellcheck-legibility.toml",
+      "scripts/update-tap-readme",
+      "tests/*.{c,sh}",
+      "tests/e2e/*_test.cmake",
+      "tests/integration/*.{sh,rb}",
+      "vendor/{yyjson,tomlc17}/{LICENSE,README.md,*.c,*.h}"
+    ]
+  }
+}

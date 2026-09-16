@@ -1,0 +1,6 @@
+select = ["LEG", "LEG042", "LEG043"]
+ignore = []
+max-expression-operators = 3
+max-if-operators = 0
+max-control-flow-depth = 2
+max-function-lines = 20

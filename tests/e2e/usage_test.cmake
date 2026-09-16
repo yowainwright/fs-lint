@@ -102,7 +102,7 @@ if(NOT sources_error STREQUAL expected_error)
 endif()
 
 file(REMOVE_RECURSE "${TEST_ROOT}")
-file(MAKE_DIRECTORY "${TEST_ROOT}")
+file(MAKE_DIRECTORY "${TEST_ROOT}/.git")
 
 execute_process(
   COMMAND "${FS_LINT}" check-path --root "${TEST_ROOT}" src/new-helper.c

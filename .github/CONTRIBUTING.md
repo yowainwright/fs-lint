@@ -28,8 +28,9 @@ Install the repository's development hooks with:
 ```
 
 This generates managed checks before commits. Pre-commit runs shell checks,
-`clang-format`, `clang-tidy`, and debug tests. Setup refuses to replace existing
-unmanaged hooks and removes older managed push hooks.
+`clang-format`, `fs-lint check --staged`, `clang-tidy`, and debug tests. The built
+fs-lint checks new paths with `--config scripts/.fs-lintrc`; CI uses the same policy.
+Setup refuses to replace existing unmanaged hooks and removes older managed push hooks.
 
 Build and run the complete suite with:
 
@@ -66,6 +67,8 @@ Run all pre-commit checks without making a commit:
 
 Run just the shell checks with `./scripts/setup.sh shell-check`. This is also
 the CI entry point for `shfmt`, ShellCheck, and `shellcheck-legibility`.
+Shell rules live in `scripts/.shellcheckrc` and `scripts/.shellcheck-legibility.toml`;
+C limits in `scripts/.clang-tidy` enforce small functions and low complexity.
 
 CI also compiles with `-Werror` on GCC and Clang and runs AddressSanitizer and
 UndefinedBehaviorSanitizer on Linux.

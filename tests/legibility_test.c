@@ -396,12 +396,10 @@ static void test_backslash_globstar_boundaries(void) {
   assert_glob_path(patterns, 1, "src/a\\myindex.c", LEGIBILITY_STATUS_VIOLATIONS);
 }
 
-int main(void) {
+static void test_glob_rules(void) {
   test_globstar_basename_boundaries();
   test_globstar_negation_boundaries();
   test_backslash_globstar_boundaries();
-  test_denies_added_file();
-  test_defaults_to_deny();
   test_allows_established_pattern();
   test_allows_globstar_without_directory();
   test_allows_backslash_globstar_without_directory();
@@ -413,6 +411,10 @@ int main(void) {
   test_rejects_wildcard_brace_product_without_exponential_work();
   test_negated_pattern_denies_allowed_path();
   test_negated_pattern_denies_default_allow();
+  test_allows_maximum_path_with_globstar();
+}
+
+static void test_invalid_inputs(void) {
   test_rejects_missing_config();
   test_rejects_missing_changes();
   test_rejects_missing_path();
@@ -422,6 +424,12 @@ int main(void) {
   test_rejects_invalid_change_kind();
   test_rejects_oversized_path();
   test_rejects_oversized_pattern();
-  test_allows_maximum_path_with_globstar();
+}
+
+int main(void) {
+  test_glob_rules();
+  test_invalid_inputs();
+  test_denies_added_file();
+  test_defaults_to_deny();
   return EXIT_SUCCESS;
 }

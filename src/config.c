@@ -362,6 +362,9 @@ static bool read_default(yyjson_val *new_files, cli_config *config) {
 }
 
 static bool allocate_patterns(size_t count, cli_config *config) {
+  if (count > CLI_MAX_ALLOW_PATTERNS) {
+    return fail(config, "newFiles.allow exceeds 4096 patterns");
+  }
   if (count == 0) {
     return true;
   }
@@ -432,22 +435,7 @@ static bool copy_pattern(yyjson_val *value, size_t index, size_t *total,
   return true;
 }
 
-static bool read_allow(yyjson_val *new_files, cli_config *config) {
-  yyjson_val *allow = yyjson_obj_get(new_files, "allow");
-  if (allow == NULL) {
-    return true;
-  }
-  if (!yyjson_is_arr(allow)) {
-    return fail(config, "newFiles.allow must be an array of strings");
-  }
-  const size_t count = yyjson_arr_size(allow);
-  if (count > CLI_MAX_ALLOW_PATTERNS) {
-    return fail(config, "newFiles.allow exceeds 4096 patterns");
-  }
-  if (!allocate_patterns(count, config)) {
-    return false;
-  }
-
+static bool copy_json_patterns(yyjson_val *allow, cli_config *config) {
   size_t index;
   size_t maximum;
   size_t total = 0;
@@ -458,6 +446,18 @@ static bool read_allow(yyjson_val *new_files, cli_config *config) {
     }
   }
   return true;
+}
+
+static bool read_allow(yyjson_val *new_files, cli_config *config) {
+  yyjson_val *allow = yyjson_obj_get(new_files, "allow");
+  if (allow == NULL) {
+    return true;
+  }
+  if (!yyjson_is_arr(allow)) {
+    return fail(config, "newFiles.allow must be an array of strings");
+  }
+  const size_t count = yyjson_arr_size(allow);
+  return allocate_patterns(count, config) && copy_json_patterns(allow, config);
 }
 
 static bool read_new_files(yyjson_val *root, cli_config *config) {
@@ -557,6 +557,17 @@ static bool copy_toml_pattern(toml_datum_t value, size_t index, size_t *total,
   return true;
 }
 
+static bool copy_toml_patterns(toml_datum_t allow, cli_config *config) {
+  const size_t count = (size_t)allow.u.arr.size;
+  size_t total = 0;
+  for (size_t index = 0; index < count; index += 1) {
+    if (!copy_toml_pattern(allow.u.arr.elem[index], index, &total, config)) {
+      return false;
+    }
+  }
+  return true;
+}
+
 static bool read_toml_allow(toml_datum_t new_files, cli_config *config) {
   const toml_datum_t allow = toml_get(new_files, "allow");
   if (allow.type == TOML_UNKNOWN) {
@@ -565,21 +576,11 @@ static bool read_toml_allow(toml_datum_t new_files, cli_config *config) {
   if (allow.type != TOML_ARRAY) {
     return fail(config, "newFiles.allow must be an array of strings");
   }
-  if (allow.u.arr.size < 0 || (size_t)allow.u.arr.size > CLI_MAX_ALLOW_PATTERNS) {
+  if (allow.u.arr.size < 0) {
     return fail(config, "newFiles.allow exceeds 4096 patterns");
   }
   const size_t count = (size_t)allow.u.arr.size;
-  if (!allocate_patterns(count, config)) {
-    return false;
-  }
-
-  size_t total = 0;
-  for (size_t index = 0; index < count; index += 1) {
-    if (!copy_toml_pattern(allow.u.arr.elem[index], index, &total, config)) {
-      return false;
-    }
-  }
-  return true;
+  return allocate_patterns(count, config) && copy_toml_patterns(allow, config);
 }
 
 static bool read_toml_new_files(toml_datum_t root, cli_config *config) {
@@ -754,6 +755,19 @@ bool cli_config_load_staged(const char *root, const char *config_path,
   return parse_staged_config(root, config);
 }
 
+static bool append_pattern(cli_config *config, const char *pattern, size_t *total) {
+  if (!add_pattern_size(pattern, total, config)) {
+    return false;
+  }
+  const size_t index = config->policy.allow_pattern_count;
+  config->owned_allow_patterns[index] = copy_string(pattern);
+  if (config->owned_allow_patterns[index] == NULL) {
+    return fail(config, "could not allocate allow pattern");
+  }
+  config->policy.allow_pattern_count += 1;
+  return true;
+}
+
 bool cli_config_append_patterns(cli_config *config, const char *const *patterns,
                                 size_t pattern_count) {
   const size_t current = config->policy.allow_pattern_count;
@@ -769,14 +783,9 @@ bool cli_config_append_patterns(cli_config *config, const char *const *patterns,
 
   size_t total = current_pattern_bytes(config);
   for (size_t index = 0; index < pattern_count; index += 1) {
-    if (!add_pattern_size(patterns[index], &total, config)) {
+    if (!append_pattern(config, patterns[index], &total)) {
       return false;
     }
-    config->owned_allow_patterns[current + index] = copy_string(patterns[index]);
-    if (config->owned_allow_patterns[current + index] == NULL) {
-      return fail(config, "could not allocate allow pattern");
-    }
-    config->policy.allow_pattern_count += 1;
   }
   return true;
 }

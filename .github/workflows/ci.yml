@@ -49,6 +49,14 @@ jobs:
           -DCMAKE_C_FLAGS=-Werror
       - name: Build
         run: cmake --build build --parallel
+      - name: Check proposed paths
+        if: >-
+          github.event_name == 'pull_request' ||
+          (github.event_name == 'push' &&
+           github.event.before != '0000000000000000000000000000000000000000')
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: ./build/fs-lint check --config scripts/.fs-lintrc --base "$BASE_SHA"
       - name: Test binary, library, and install
         run: ctest --test-dir build --output-on-failure
 

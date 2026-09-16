@@ -347,23 +347,21 @@ static void report_cli_error(const char *code, const char *path, const char *mes
   cli_report(&diagnostic, output);
 }
 
+static bool load_config(const cli_arguments *arguments, cli_config *config) {
+  const bool loaded =
+      arguments->staged
+          ? cli_config_load_staged(arguments->root, arguments->config_path, config)
+          : cli_config_load(arguments->root, arguments->config_path, config);
+  return loaded && cli_config_append_patterns(
+                       config, (const char *const *)arguments->override_patterns,
+                       arguments->override_pattern_count);
+}
+
 static int run_checks(const cli_arguments *arguments, const legibility_change *changes,
                       size_t change_count) {
   cli_output output = {.format = arguments->format, .stream = stdout};
   cli_config config;
-  const bool loaded =
-      arguments->staged
-          ? cli_config_load_staged(arguments->root, arguments->config_path, &config)
-          : cli_config_load(arguments->root, arguments->config_path, &config);
-  if (!loaded) {
-    report_cli_error("config/invalid", config.source_path, config.error, &output);
-    cli_config_destroy(&config);
-    return LEGIBILITY_STATUS_ERROR;
-  }
-  const bool appended = cli_config_append_patterns(
-      &config, (const char *const *)arguments->override_patterns,
-      arguments->override_pattern_count);
-  if (!appended) {
+  if (!load_config(arguments, &config)) {
     report_cli_error("config/invalid", config.source_path, config.error, &output);
     cli_config_destroy(&config);
     return LEGIBILITY_STATUS_ERROR;
@@ -432,9 +430,30 @@ static int check_batch(const cli_arguments *arguments) {
   return status;
 }
 
-int main(int argc, char **argv) {
+static int run_command(const cli_arguments *arguments) {
+  if (arguments->command == CLI_CONFIG) {
+    return validate_config(arguments);
+  }
+  if (arguments->path_count > 0) {
+    return check_paths(arguments);
+  }
+  return check_batch(arguments);
+}
+
+static int run_cli(int argc, char **argv) {
   cli_arguments arguments;
   initialize_arguments(&arguments);
+  if (!parse_arguments(argc, argv, &arguments)) {
+    const int status = usage(&arguments);
+    destroy_arguments(&arguments);
+    return status;
+  }
+  const int status = run_command(&arguments);
+  destroy_arguments(&arguments);
+  return status;
+}
+
+int main(int argc, char **argv) {
   if (wants_help(argc, argv)) {
     print_usage(stdout);
     return LEGIBILITY_STATUS_OK;
@@ -443,19 +462,5 @@ int main(int argc, char **argv) {
     printf("fs-lint %s\n", FS_LINT_VERSION);
     return LEGIBILITY_STATUS_OK;
   }
-  if (!parse_arguments(argc, argv, &arguments)) {
-    const int status = usage(&arguments);
-    destroy_arguments(&arguments);
-    return status;
-  }
-  int status = LEGIBILITY_STATUS_ERROR;
-  if (arguments.command == CLI_CONFIG) {
-    status = validate_config(&arguments);
-  } else if (arguments.path_count > 0) {
-    status = check_paths(&arguments);
-  } else {
-    status = check_batch(&arguments);
-  }
-  destroy_arguments(&arguments);
-  return status;
+  return run_cli(argc, argv);
 }

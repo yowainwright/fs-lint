@@ -46,7 +46,6 @@ function(assert_version root expected)
   endif()
 endfunction()
 
-# A source directory inside another checkout must not inherit its parent's tags.
 assert_version("${source}" "0.0.0-unknown\\|0.0.0")
 run_git(-c init.defaultBranch=main init -q)
 run_git(add CMakeLists.txt version.cmake)
@@ -66,11 +65,9 @@ run_git(commit -qm next-release)
 run_git(tag -a v3.4.6 -m release)
 assert_version("${source}" "3.4.6\\|3.4.6")
 
-# The workflow's explicit tag version takes precedence over checkout metadata.
 assert_version("${source}" "4.5.6\\|4.5.6" -DFS_LINT_VERSION=4.5.6)
 assert_version("${source}" "3.4.6\\|3.4.6")
 
-# Use the same Git archive option as the release workflow; no Git metadata ships.
 run_git(archive --format=tar --prefix=source/
   --add-virtual-file=source/VERSION:3.4.6 -o "${TEST_ROOT}/source.tar" HEAD)
 file(MAKE_DIRECTORY "${TEST_ROOT}/archive")
