@@ -32,7 +32,9 @@ jobs:
           version="${GITHUB_REF_NAME#v}"
           package="fs-lint-${version}-source"
           mkdir release
-          git archive --format=tar.gz --prefix="$package/" -o "release/$package.tar.gz" "$GITHUB_SHA"
+          git archive --format=tar.gz --prefix="$package/" \
+            --add-virtual-file="$package/VERSION:$version" \
+            -o "release/$package.tar.gz" "$GITHUB_SHA"
           cd release
           cmake -E sha256sum "$package.tar.gz" > "$package.tar.gz.sha256"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -72,10 +74,11 @@ jobs:
         with:
           persist-credentials: false
       - name: Configure
-        run: >-
-          cmake -S . -B build
-          -DCMAKE_BUILD_TYPE=Release
-          -DCMAKE_C_FLAGS=-Werror
+        run: |
+          cmake -S . -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_FLAGS=-Werror \
+            -DFS_LINT_VERSION="${GITHUB_REF_NAME#v}"
       - name: Build
         run: cmake --build build --parallel
       - name: Test
@@ -84,7 +87,7 @@ jobs:
         run: |
           expected="v$(./build/fs-lint --version | awk '{print $2}')"
           if [ "$GITHUB_REF_NAME" != "$expected" ]; then
-            printf '::error::Release tag %s does not match compiled version %s. Update CMakeLists.txt before tagging.\n' "$GITHUB_REF_NAME" "$expected"
+            printf '::error::Release tag %s does not match compiled version %s.\n' "$GITHUB_REF_NAME" "$expected"
             exit 1
           fi
       - name: Package

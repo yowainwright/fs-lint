@@ -476,22 +476,19 @@ before implementation. Source-code and import analysis stay in `src-lint`.
 
 ## Development
 
-```sh
-./scripts/setup.sh
-```
-
-Installs a managed pre-commit hook that runs shell checks, `clang-format`,
-`clang-tidy`, and debug tests. Both C tools are required; see
-[development setup](.github/CONTRIBUTING.md#development-setup).
+See [development setup](.github/CONTRIBUTING.md#development-setup) for build
+requirements, hooks, and checks.
 
 ## Release
 
-A tag matching the compiled version, such as `v0.2.0`, publishes source and
-binary assets to GitHub. The release workflow also opens a Homebrew tap PR for
-`yowainwright/tap/fs-lint`.
+Development builds report the latest reachable version tag plus the commit count
+and hash. Published source archives carry their version without requiring Git.
 
 Release assets use the `fs-lint-*` prefix. Each asset includes a SHA-256 file;
 binary assets also include Sigstore attestations.
+
+See the [release guide](.github/CONTRIBUTING.md#release) for publishing and Homebrew
+updates.
 
 ## License
 

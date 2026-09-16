@@ -98,10 +98,9 @@ the full binary asset matrix. It then opens a
 formula update pull request against `yowainwright/homebrew-tap` using the tap's
 `scripts/new-formula` and `scripts/update-formula` API at the validated tap revision.
 
-Create the release tag on the final merged commit after CI passes. Its version
-must match `project(fs_lint VERSION ...)` in `CMakeLists.txt`; the release build
-checks that the tag matches `fs-lint --version`. Check a local tag's target
-before publishing it, since an existing tag does not advance with the branch.
+Tag the final merged commit after CI passes. The tag supplies the release version;
+no source version bump is needed. Verify the tag points to that commit before
+pushing it.
 
 The repository secret `HOMEBREW_TAP_TOKEN` must have contents and pull request
 write access to `yowainwright/homebrew-tap`. The tap automation scripts must be

@@ -28,11 +28,16 @@ file(
   [=[cmake_minimum_required(VERSION 3.20)
 project(legibility_consumer LANGUAGES C)
 
-find_package(legibility 0.2 CONFIG REQUIRED)
+find_package(legibility CONFIG REQUIRED)
 
 add_executable(legibility-consumer main.c)
 target_link_libraries(legibility-consumer PRIVATE legibility::legibility)
 ]=]
+)
+file(APPEND "${consumer_root}/CMakeLists.txt"
+  "\nif(NOT legibility_VERSION VERSION_EQUAL \"${FS_LINT_EXPECTED_PROJECT_VERSION}\")\n"
+  "  message(FATAL_ERROR \"Installed package version does not match the build\")\n"
+  "endif()\n"
 )
 file(
   WRITE "${consumer_root}/main.c"

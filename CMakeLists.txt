@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 3.20)
 
-project(fs_lint VERSION 0.2.1 LANGUAGES C)
+include(cmake/version.cmake)
+project(fs_lint VERSION ${FS_LINT_PROJECT_VERSION} LANGUAGES C)
 
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
@@ -52,7 +53,7 @@ add_executable(
 )
 target_include_directories(fs-lint PRIVATE src)
 target_link_libraries(fs-lint PRIVATE legibility yyjson tomlc17)
-target_compile_definitions(fs-lint PRIVATE FS_LINT_VERSION="${PROJECT_VERSION}")
+target_compile_definitions(fs-lint PRIVATE FS_LINT_VERSION="${FS_LINT_VERSION}")
 legibility_enable_warnings(fs-lint)
 
 install(
@@ -138,7 +139,9 @@ if(BUILD_TESTING)
       COMMAND
         ${CMAKE_COMMAND}
         -DFS_LINT=$<TARGET_FILE:fs-lint>
-        -DFS_LINT_EXPECTED_VERSION=${PROJECT_VERSION}
+        -DFS_LINT_EXPECTED_VERSION=${FS_LINT_VERSION}
+        -DFS_LINT_EXPECTED_PROJECT_VERSION=${PROJECT_VERSION}
+        -DPROJECT_SOURCE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}
         -DTEST_ROOT=${test_root}
         -DPROJECT_BUILD_DIR=${CMAKE_CURRENT_BINARY_DIR}
         -P ${test_script}
@@ -159,6 +162,7 @@ if(BUILD_TESTING)
   add_fs_lint_e2e(stdin0)
   add_fs_lint_e2e(toml-config)
   add_fs_lint_e2e(usage)
+  add_fs_lint_e2e(version)
 
   add_custom_target(
     e2e
