@@ -103,7 +103,7 @@ static char *find_from_directory(char *directory, char *error, size_t error_size
   }
 }
 
-char *legibility_discover_config(const char *root, char *error, size_t error_size) {
+char *fs_lint_discover_config(const char *root, char *error, size_t error_size) {
   error[0] = '\0';
   char *directory = realpath(root, NULL);
   if (directory == NULL) {

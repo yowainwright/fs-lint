@@ -351,11 +351,11 @@ static bool read_default(yyjson_val *new_files, cli_config *config) {
     return fail(config, "newFiles.default must be \"allow\" or \"deny\"");
   }
   if (strcmp(setting, "deny") == 0) {
-    config->policy.new_files_default = LEGIBILITY_NEW_FILES_DENY;
+    config->policy.new_files_default = FS_LINT_NEW_FILES_DENY;
     return true;
   }
   if (strcmp(setting, "allow") == 0) {
-    config->policy.new_files_default = LEGIBILITY_NEW_FILES_ALLOW;
+    config->policy.new_files_default = FS_LINT_NEW_FILES_ALLOW;
     return true;
   }
   return fail(config, "newFiles.default must be \"allow\" or \"deny\"");
@@ -406,8 +406,8 @@ static bool grow_patterns(cli_config *config, size_t pattern_count) {
 
 static bool add_pattern_size(const char *pattern, size_t *total, cli_config *config) {
   const size_t length = strlen(pattern);
-  if (length > LEGIBILITY_MAX_PATTERN_LENGTH) {
-    return fail(config, "allow pattern exceeds LEGIBILITY_MAX_PATTERN_LENGTH");
+  if (length > FS_LINT_MAX_PATTERN_LENGTH) {
+    return fail(config, "allow pattern exceeds FS_LINT_MAX_PATTERN_LENGTH");
   }
   if (length > CLI_MAX_ALLOW_PATTERN_BYTES - *total) {
     return fail(config, "newFiles.allow exceeds 262144 bytes");
@@ -529,11 +529,11 @@ static bool read_toml_default(toml_datum_t new_files, cli_config *config) {
     return fail(config, "newFiles.default must be \"allow\" or \"deny\"");
   }
   if (strcmp(value.u.s, "deny") == 0) {
-    config->policy.new_files_default = LEGIBILITY_NEW_FILES_DENY;
+    config->policy.new_files_default = FS_LINT_NEW_FILES_DENY;
     return true;
   }
   if (strcmp(value.u.s, "allow") == 0) {
-    config->policy.new_files_default = LEGIBILITY_NEW_FILES_ALLOW;
+    config->policy.new_files_default = FS_LINT_NEW_FILES_ALLOW;
     return true;
   }
   return fail(config, "newFiles.default must be \"allow\" or \"deny\"");
@@ -653,7 +653,7 @@ static char *locate_config(const char *root, const char *config_path,
   if (config_path != NULL) {
     return resolve_config_path(root, config_path);
   }
-  return legibility_discover_config(root, config->error, sizeof(config->error));
+  return fs_lint_discover_config(root, config->error, sizeof(config->error));
 }
 
 bool cli_config_load(const char *root, const char *config_path, cli_config *config) {

@@ -9,7 +9,7 @@ typedef struct {
   bool negated;
 } glob_pattern;
 
-struct legibility_glob_matcher {
+struct fs_lint_glob_matcher {
   glob_pattern *patterns;
   unsigned char *current;
   unsigned char *next;
@@ -21,7 +21,7 @@ struct legibility_glob_matcher {
 };
 
 typedef struct {
-  legibility_glob_matcher *matcher;
+  fs_lint_glob_matcher *matcher;
   const char *pattern;
   size_t length;
 } pattern_matcher;
@@ -68,7 +68,7 @@ static bool find_pattern_width(const char *const *patterns, size_t pattern_count
   return true;
 }
 
-static bool allocate_pattern_storage(legibility_glob_matcher *matcher,
+static bool allocate_pattern_storage(fs_lint_glob_matcher *matcher,
                                      size_t pattern_count) {
   matcher->patterns = allocate_items(pattern_count, sizeof(*matcher->patterns));
   if (pattern_count > 0 && matcher->patterns == NULL) {
@@ -78,7 +78,7 @@ static bool allocate_pattern_storage(legibility_glob_matcher *matcher,
   return true;
 }
 
-static bool allocate_match_storage(legibility_glob_matcher *matcher) {
+static bool allocate_match_storage(fs_lint_glob_matcher *matcher) {
   matcher->current = allocate_items(matcher->pattern_width, sizeof(*matcher->current));
   matcher->next = allocate_items(matcher->pattern_width, sizeof(*matcher->next));
   matcher->seen = allocate_items(matcher->pattern_width, sizeof(*matcher->seen));
@@ -89,7 +89,7 @@ static bool allocate_match_storage(legibility_glob_matcher *matcher) {
          matcher->brace_ends != NULL && matcher->jumps != NULL;
 }
 
-static bool copy_input_patterns(legibility_glob_matcher *matcher,
+static bool copy_input_patterns(fs_lint_glob_matcher *matcher,
                                 const char *const *patterns, size_t pattern_count) {
   for (size_t index = 0; index < pattern_count; index += 1) {
     const bool negated = patterns[index][0] == '!';
@@ -124,7 +124,7 @@ static bool find_brace_group_at(const char *pattern, size_t open, size_t *close)
 }
 
 static void mark_brace_group(pattern_matcher *context, size_t open, size_t close) {
-  legibility_glob_matcher *matcher = context->matcher;
+  fs_lint_glob_matcher *matcher = context->matcher;
   matcher->brace_ends[open] = close + 1;
   size_t depth = 0;
   for (size_t index = open + 1; index <= close; index += 1) {
@@ -139,7 +139,7 @@ static void mark_brace_group(pattern_matcher *context, size_t open, size_t close
 }
 
 static void prepare_pattern(pattern_matcher *context) {
-  legibility_glob_matcher *matcher = context->matcher;
+  fs_lint_glob_matcher *matcher = context->matcher;
   memset(matcher->current, 0, matcher->pattern_width);
   memset(matcher->next, 0, matcher->pattern_width);
   memset(matcher->brace_ends, 0, matcher->pattern_width * sizeof(*matcher->brace_ends));
@@ -180,7 +180,7 @@ static void add_star_zero_state(pattern_matcher *context, unsigned char *states,
 }
 
 static void add_state(pattern_matcher *context, unsigned char *states, size_t index) {
-  legibility_glob_matcher *matcher = context->matcher;
+  fs_lint_glob_matcher *matcher = context->matcher;
   if (index > context->length || matcher->seen[index] != 0) {
     return;
   }
@@ -247,7 +247,7 @@ static void consume_state(pattern_matcher *context, size_t index, char path) {
 }
 
 static void consume_path_character(pattern_matcher *context, char path) {
-  legibility_glob_matcher *matcher = context->matcher;
+  fs_lint_glob_matcher *matcher = context->matcher;
   memset(matcher->next, 0, matcher->pattern_width);
   memset(matcher->seen, 0, matcher->pattern_width);
   for (size_t index = 0; index <= context->length; index += 1) {
@@ -260,7 +260,7 @@ static void consume_path_character(pattern_matcher *context, char path) {
   matcher->next = swap;
 }
 
-static bool matches_pattern(legibility_glob_matcher *matcher, glob_pattern pattern,
+static bool matches_pattern(fs_lint_glob_matcher *matcher, glob_pattern pattern,
                             const char *path, size_t path_length) {
   pattern_matcher context = {
       .matcher = matcher,
@@ -275,9 +275,9 @@ static bool matches_pattern(legibility_glob_matcher *matcher, glob_pattern patte
   return matcher->current[context.length] != 0;
 }
 
-static legibility_glob_matcher *allocate_matcher(size_t pattern_count,
-                                                 size_t pattern_width) {
-  legibility_glob_matcher *matcher = calloc(1, sizeof(*matcher));
+static fs_lint_glob_matcher *allocate_matcher(size_t pattern_count,
+                                              size_t pattern_width) {
+  fs_lint_glob_matcher *matcher = calloc(1, sizeof(*matcher));
   if (matcher == NULL) {
     return NULL;
   }
@@ -285,31 +285,31 @@ static legibility_glob_matcher *allocate_matcher(size_t pattern_count,
   const bool storage_ready = allocate_pattern_storage(matcher, pattern_count);
   const bool matches_ready = storage_ready && allocate_match_storage(matcher);
   if (!matches_ready) {
-    legibility_glob_matcher_destroy(matcher);
+    fs_lint_glob_matcher_destroy(matcher);
     return NULL;
   }
   return matcher;
 }
 
-legibility_glob_matcher *legibility_glob_matcher_create(const char *const *patterns,
-                                                        size_t pattern_count) {
+fs_lint_glob_matcher *fs_lint_glob_matcher_create(const char *const *patterns,
+                                                  size_t pattern_count) {
   size_t pattern_width;
   if (!find_pattern_width(patterns, pattern_count, &pattern_width)) {
     return NULL;
   }
-  legibility_glob_matcher *matcher = allocate_matcher(pattern_count, pattern_width);
+  fs_lint_glob_matcher *matcher = allocate_matcher(pattern_count, pattern_width);
   if (matcher == NULL) {
     return NULL;
   }
   if (!copy_input_patterns(matcher, patterns, pattern_count)) {
-    legibility_glob_matcher_destroy(matcher);
+    fs_lint_glob_matcher_destroy(matcher);
     return NULL;
   }
   return matcher;
 }
 
-bool legibility_glob_matcher_allows(legibility_glob_matcher *matcher, const char *path,
-                                    bool default_allowed) {
+bool fs_lint_glob_matcher_allows(fs_lint_glob_matcher *matcher, const char *path,
+                                 bool default_allowed) {
   const size_t path_length = strlen(path);
   bool allowed = default_allowed;
   for (size_t index = 0; index < matcher->pattern_count; index += 1) {
@@ -320,7 +320,7 @@ bool legibility_glob_matcher_allows(legibility_glob_matcher *matcher, const char
   return allowed;
 }
 
-void legibility_glob_matcher_destroy(legibility_glob_matcher *matcher) {
+void fs_lint_glob_matcher_destroy(fs_lint_glob_matcher *matcher) {
   if (matcher == NULL) {
     return;
   }

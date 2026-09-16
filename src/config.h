@@ -1,13 +1,13 @@
-#ifndef LEGIBILITY_CONFIG_H
-#define LEGIBILITY_CONFIG_H
+#ifndef FS_LINT_CONFIG_H
+#define FS_LINT_CONFIG_H
 
-#include "legibility.h"
+#include "fs-lint.h"
 
 #include <stdbool.h>
 #include <stddef.h>
 
 typedef struct {
-  legibility_config policy;
+  fs_lint_config policy;
   char **owned_allow_patterns;
   char *source_path;
   char error[256];

@@ -5,8 +5,8 @@
 
 static const char *safe_string(const char *value) { return value == NULL ? "" : value; }
 
-static const char *severity_name(legibility_severity severity) {
-  return severity == LEGIBILITY_SEVERITY_WARNING ? "warning" : "error";
+static const char *severity_name(fs_lint_severity severity) {
+  return severity == FS_LINT_SEVERITY_WARNING ? "warning" : "error";
 }
 
 static bool is_continuation(unsigned char value) {
@@ -140,7 +140,7 @@ static void write_json_string(FILE *stream, const char *value) {
   fputc('"', stream);
 }
 
-static void report_json(const legibility_diagnostic *diagnostic, FILE *stream) {
+static void report_json(const fs_lint_diagnostic *diagnostic, FILE *stream) {
   fputs("{\"severity\":", stream);
   write_json_string(stream, severity_name(diagnostic->severity));
   fputs(",\"code\":", stream);
@@ -172,7 +172,7 @@ static void write_text_string(FILE *stream, const char *value) {
   write_utf8_string(stream, value, write_text_character, write_invalid_text_byte);
 }
 
-static void report_text(const legibility_diagnostic *diagnostic, FILE *stream) {
+static void report_text(const fs_lint_diagnostic *diagnostic, FILE *stream) {
   write_text_string(stream, diagnostic->path);
   fprintf(stream, ": %s ", severity_name(diagnostic->severity));
   write_text_string(stream, diagnostic->code);
@@ -181,7 +181,7 @@ static void report_text(const legibility_diagnostic *diagnostic, FILE *stream) {
   fputc('\n', stream);
 }
 
-void cli_report(const legibility_diagnostic *diagnostic, void *user_data) {
+void cli_report(const fs_lint_diagnostic *diagnostic, void *user_data) {
   cli_output *output = user_data;
   if (output->format == CLI_OUTPUT_JSON) {
     report_json(diagnostic, output->stream);

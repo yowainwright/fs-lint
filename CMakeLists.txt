@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.20)
 
 include(cmake/version.cmake)
-project(fs_lint VERSION ${FS_LINT_PROJECT_VERSION} LANGUAGES C)
+project(fs-lint VERSION ${FS_LINT_PROJECT_VERSION} LANGUAGES C)
 
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
@@ -10,7 +10,7 @@ set(CMAKE_C_STANDARD 17)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS OFF)
 
-function(legibility_enable_warnings target)
+function(fs_lint_enable_warnings target)
   if(CMAKE_C_COMPILER_ID MATCHES "Clang|GNU")
     target_compile_options(
       ${target}
@@ -31,16 +31,17 @@ if(CMAKE_C_COMPILER_ID MATCHES "Clang")
   )
 endif()
 
-add_library(legibility STATIC src/glob.c src/legibility.c)
+add_library(fs_lint STATIC src/glob.c src/fs-lint.c)
+set_target_properties(fs_lint PROPERTIES OUTPUT_NAME fs-lint EXPORT_NAME fs-lint)
 target_include_directories(
-  legibility
+  fs_lint
   PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
   PRIVATE src
 )
 
-legibility_enable_warnings(legibility)
+fs_lint_enable_warnings(fs_lint)
 
 add_executable(
   fs-lint
@@ -52,17 +53,18 @@ add_executable(
   src/main.c
 )
 target_include_directories(fs-lint PRIVATE src)
-target_link_libraries(fs-lint PRIVATE legibility yyjson tomlc17)
+set_target_properties(fs-lint PROPERTIES EXPORT_NAME cli)
+target_link_libraries(fs-lint PRIVATE fs_lint yyjson tomlc17)
 target_compile_definitions(fs-lint PRIVATE FS_LINT_VERSION="${FS_LINT_VERSION}")
-legibility_enable_warnings(fs-lint)
+fs_lint_enable_warnings(fs-lint)
 
 install(
-  TARGETS legibility fs-lint
-  EXPORT legibility-targets
+  TARGETS fs_lint fs-lint
+  EXPORT fs-lint-targets
   ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
   RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
-install(FILES include/legibility.h DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+install(FILES include/fs-lint.h DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 install(FILES LICENSE DESTINATION ${CMAKE_INSTALL_DOCDIR})
 install(
   FILES vendor/yyjson/LICENSE
@@ -75,47 +77,47 @@ install(
   RENAME tomlc17-LICENSE
 )
 configure_package_config_file(
-  cmake/legibility-config.cmake.in
-  ${CMAKE_CURRENT_BINARY_DIR}/legibility-config.cmake
-  INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/legibility
+  cmake/fs-lint-config.cmake.in
+  ${CMAKE_CURRENT_BINARY_DIR}/fs-lint-config.cmake
+  INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/fs-lint
 )
 write_basic_package_version_file(
-  ${CMAKE_CURRENT_BINARY_DIR}/legibility-config-version.cmake
+  ${CMAKE_CURRENT_BINARY_DIR}/fs-lint-config-version.cmake
   VERSION ${PROJECT_VERSION}
   COMPATIBILITY SameMajorVersion
 )
 install(
-  EXPORT legibility-targets
-  FILE legibility-targets.cmake
-  NAMESPACE legibility::
-  DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/legibility
+  EXPORT fs-lint-targets
+  FILE fs-lint-targets.cmake
+  NAMESPACE fs-lint::
+  DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/fs-lint
 )
 install(
   FILES
-    ${CMAKE_CURRENT_BINARY_DIR}/legibility-config.cmake
-    ${CMAKE_CURRENT_BINARY_DIR}/legibility-config-version.cmake
-  DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/legibility
+    ${CMAKE_CURRENT_BINARY_DIR}/fs-lint-config.cmake
+    ${CMAKE_CURRENT_BINARY_DIR}/fs-lint-config-version.cmake
+  DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/fs-lint
 )
 
 include(CTest)
 
 if(BUILD_TESTING)
   file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/test-data)
-  add_executable(legibility-test tests/legibility_test.c)
-  target_link_libraries(legibility-test PRIVATE legibility)
-  legibility_enable_warnings(legibility-test)
-  add_test(NAME core-policy COMMAND legibility-test)
-  add_executable(allocation-test tests/allocation_test.c src/glob.c src/legibility.c)
+  add_executable(fs-lint-test tests/fs-lint_test.c)
+  target_link_libraries(fs-lint-test PRIVATE fs_lint)
+  fs_lint_enable_warnings(fs-lint-test)
+  add_test(NAME core-policy COMMAND fs-lint-test)
+  add_executable(allocation-test tests/allocation_test.c src/glob.c src/fs-lint.c)
   target_include_directories(allocation-test PRIVATE include src)
   target_compile_definitions(
     allocation-test PRIVATE malloc=test_malloc calloc=test_calloc free=test_free
   )
-  legibility_enable_warnings(allocation-test)
+  fs_lint_enable_warnings(allocation-test)
   add_test(NAME allocation-failures COMMAND allocation-test)
   add_executable(cli-output-test tests/cli_output_test.c src/cli_output.c)
   target_include_directories(cli-output-test PRIVATE src)
-  target_link_libraries(cli-output-test PRIVATE legibility)
-  legibility_enable_warnings(cli-output-test)
+  target_link_libraries(cli-output-test PRIVATE fs_lint)
+  fs_lint_enable_warnings(cli-output-test)
   add_test(NAME cli-output COMMAND cli-output-test)
   add_test(NAME setup-hooks COMMAND sh ${CMAKE_CURRENT_SOURCE_DIR}/tests/setup_test.sh)
   set_tests_properties(setup-hooks PROPERTIES LABELS "scripts")

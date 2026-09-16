@@ -53,15 +53,15 @@ static path_status finish_stream(FILE *stream, size_t length, cli_changes *chang
 }
 
 static path_status read_path(FILE *stream, char **path, cli_changes *changes) {
-  char buffer[LEGIBILITY_MAX_PATH_LENGTH + 1];
+  char buffer[FS_LINT_MAX_PATH_LENGTH + 1];
   size_t length = 0;
   int value;
   while ((value = fgetc(stream)) != EOF) {
     if (value == '\0') {
       return finish_path(buffer, length, path, changes);
     }
-    if (length == LEGIBILITY_MAX_PATH_LENGTH) {
-      fail(changes, "change path exceeds LEGIBILITY_MAX_PATH_LENGTH");
+    if (length == FS_LINT_MAX_PATH_LENGTH) {
+      fail(changes, "change path exceeds FS_LINT_MAX_PATH_LENGTH");
       return PATH_ERROR;
     }
     buffer[length] = (char)value;
@@ -74,7 +74,7 @@ static bool grow_changes(cli_changes *changes) {
   const size_t doubled = changes->capacity * 2;
   size_t capacity = changes->capacity == 0 ? 16 : doubled;
   capacity = capacity > CLI_MAX_CHANGES ? CLI_MAX_CHANGES : capacity;
-  legibility_change *items = realloc(changes->items, capacity * sizeof(*items));
+  fs_lint_change *items = realloc(changes->items, capacity * sizeof(*items));
   if (items == NULL) {
     return fail(changes, "could not allocate changes");
   }
@@ -91,9 +91,9 @@ static bool append_path(cli_changes *changes, char *path) {
   if (needs_capacity && !grow_changes(changes)) {
     return false;
   }
-  changes->items[changes->count] = (legibility_change){
+  changes->items[changes->count] = (fs_lint_change){
       .path = path,
-      .kind = LEGIBILITY_CHANGE_ADDED,
+      .kind = FS_LINT_CHANGE_ADDED,
   };
   changes->count += 1;
   return true;

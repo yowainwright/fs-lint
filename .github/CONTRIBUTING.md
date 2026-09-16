@@ -125,7 +125,7 @@ the tap's current default branch. It runs the real formula audit, install, and t
 
 - Keep the policy library dependency-free C17.
 - Keep Git, configuration parsing, filesystem access, and process execution out
-  of `liblegibility`.
+  of `libfs-lint`.
 - Add focused library tests for policy behavior and binary end-to-end tests for
   CLI, configuration, Git, or filesystem behavior.
 - Update documentation when public behavior, configuration, or CLI syntax

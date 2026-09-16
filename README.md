@@ -436,25 +436,25 @@ Forward and backward slashes are treated as path separators.
 
 ## Library
 
-Source installs include `include/legibility.h`, `liblegibility.a`, and CMake
+Source installs include `include/fs-lint.h`, `libfs-lint.a`, and CMake
 package files. The C API is in preview until `1.0`.
 
 ```cmake
-find_package(legibility 0.2 CONFIG REQUIRED)
-target_link_libraries(your-target PRIVATE legibility::legibility)
+find_package(fs-lint 0.2 CONFIG REQUIRED)
+target_link_libraries(your-target PRIVATE fs-lint::fs-lint)
 ```
 
 ```c
-const legibility_config config = {
-    .new_files_default = LEGIBILITY_NEW_FILES_DENY,
+const fs_lint_config config = {
+    .new_files_default = FS_LINT_NEW_FILES_DENY,
 };
-const legibility_change change = {
+const fs_lint_change change = {
     .path = "src/auth/helper.ts",
-    .kind = LEGIBILITY_CHANGE_ADDED,
+    .kind = FS_LINT_CHANGE_ADDED,
 };
 
-legibility_status status =
-    legibility_check(&config, &change, 1, report_diagnostic, context);
+fs_lint_status status =
+    fs_lint_check(&config, &change, 1, report_diagnostic, context);
 ```
 
 Configuration parsing, Git integration, and agent hooks stay outside the core

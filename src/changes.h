@@ -1,14 +1,14 @@
-#ifndef LEGIBILITY_CHANGES_H
-#define LEGIBILITY_CHANGES_H
+#ifndef FS_LINT_CHANGES_H
+#define FS_LINT_CHANGES_H
 
-#include "legibility.h"
+#include "fs-lint.h"
 
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdio.h>
 
 typedef struct {
-  legibility_change *items;
+  fs_lint_change *items;
   size_t count;
   size_t capacity;
   char error[256];

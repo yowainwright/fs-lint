@@ -3,7 +3,7 @@
 #undef calloc
 #undef free
 
-#include "legibility.h"
+#include "fs-lint.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -51,18 +51,18 @@ void test_free(void *pointer) {
   free(pointer);
 }
 
-static legibility_status check_path(void) {
+static fs_lint_status check_path(void) {
   const char *patterns[] = {"src/**/{index,utils}.c", "!**/generated/**"};
-  const legibility_config config = {
+  const fs_lint_config config = {
       .allow_patterns = patterns,
       .allow_pattern_count = 2,
   };
-  const legibility_change change = {
+  const fs_lint_change change = {
       .path = "src/index.c",
-      .kind = LEGIBILITY_CHANGE_ADDED,
+      .kind = FS_LINT_CHANGE_ADDED,
   };
   allocation_count = 0;
-  const legibility_status status = legibility_check(&config, &change, 1, NULL, NULL);
+  const fs_lint_status status = fs_lint_check(&config, &change, 1, NULL, NULL);
   if (live_allocations != 0) {
     fail("matcher leaked memory");
   }
@@ -70,12 +70,12 @@ static legibility_status check_path(void) {
 }
 
 int main(void) {
-  if (check_path() != LEGIBILITY_STATUS_OK || allocation_count == 0) {
+  if (check_path() != FS_LINT_STATUS_OK || allocation_count == 0) {
     fail("baseline check failed");
   }
   const size_t total_allocations = allocation_count;
   for (fail_at = 1; fail_at <= total_allocations; fail_at += 1) {
-    if (check_path() != LEGIBILITY_STATUS_ERROR) {
+    if (check_path() != FS_LINT_STATUS_ERROR) {
       fail("expected an allocation failure to return an error");
     }
   }

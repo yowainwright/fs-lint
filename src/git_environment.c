@@ -2,7 +2,7 @@
 
 #include "git_environment.h"
 
-#include "legibility.h"
+#include "fs-lint.h"
 
 #include <errno.h>
 #include <stdio.h>
@@ -111,8 +111,8 @@ static bool read_environment(git_environment *environment) {
 }
 
 static bool same_repository(const char *root, const git_environment *environment) {
-  char current[LEGIBILITY_MAX_PATH_LENGTH + 2];
-  char target[LEGIBILITY_MAX_PATH_LENGTH + 2];
+  char current[FS_LINT_MAX_PATH_LENGTH + 2];
+  char target[FS_LINT_MAX_PATH_LENGTH + 2];
   const bool current_found =
       rev_parse(".", "--absolute-git-dir", NULL, current, sizeof(current));
   const bool target_found =

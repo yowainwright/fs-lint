@@ -12,8 +12,8 @@ static void fail(const char *message, FILE *stream) {
 }
 
 static void write_null_path(FILE *stream, cli_output_format format) {
-  const legibility_diagnostic diagnostic = {
-      .severity = LEGIBILITY_SEVERITY_ERROR,
+  const fs_lint_diagnostic diagnostic = {
+      .severity = FS_LINT_SEVERITY_ERROR,
       .code = "config/invalid",
       .path = NULL,
       .message = "could not allocate configuration path",
