@@ -7,8 +7,8 @@ Thanks for improving `fs-lint`.
 <!-- build requirements and commands matching CMakeLists.txt and .github/workflows/ci.yml -->
 
 You need CMake 3.20 or newer, a C17 compiler, `clang-tidy`, `clang-format`,
-`shfmt`, ShellCheck, and `shellcheck-legibility`. Both shell linters are required
-by pre-commit and CI. CI uses LLVM 18 for both C checks and
+`shfmt`, ShellCheck 0.11 or newer, and `shellcheck-legibility`. Both shell linters are required
+by pre-commit and CI. CI uses LLVM 18 for both C checks, ShellCheck 0.11.0, and
 `shellcheck-legibility` 0.2.1 for shell readability.
 
 Install Ruby on your `PATH` to run the Homebrew release integration test.
