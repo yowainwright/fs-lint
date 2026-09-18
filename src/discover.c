@@ -9,6 +9,11 @@
 #include <string.h>
 #include <sys/stat.h>
 
+static const char *const config_names[] = {
+    ".fs-lintrc", "fs-lint.json", "fs-lint.toml", "fs-lint.yaml", "fs-lint.yml",
+};
+static const size_t config_name_count = sizeof(config_names) / sizeof(config_names[0]);
+
 static char *join_path(const char *root, const char *name) {
   const size_t size = strlen(root) + strlen(name) + 2;
   char *path = malloc(size);
@@ -60,13 +65,9 @@ static char *reject_conflict(char *found, char *candidate, char *error,
 }
 
 static char *find_in_directory(const char *directory, char *error, size_t error_size) {
-  const char *names[] = {
-      ".fs-lintrc", "fs-lint.json", "fs-lint.toml", "fs-lint.yaml", "fs-lint.yml",
-  };
-  const size_t name_count = sizeof(names) / sizeof(names[0]);
   char *found = NULL;
-  for (size_t index = 0; index < name_count; index += 1) {
-    char *candidate = join_path(directory, names[index]);
+  for (size_t index = 0; index < config_name_count; index += 1) {
+    char *candidate = join_path(directory, config_names[index]);
     if (candidate == NULL) {
       free(found);
       snprintf(error, error_size, "could not allocate configuration path");
@@ -102,7 +103,7 @@ static char *find_from_directory(char *directory, char *error, size_t error_size
   }
 }
 
-char *legibility_discover_config(const char *root, char *error, size_t error_size) {
+char *fs_lint_discover_config(const char *root, char *error, size_t error_size) {
   error[0] = '\0';
   char *directory = realpath(root, NULL);
   if (directory == NULL) {

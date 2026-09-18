@@ -436,25 +436,25 @@ Forward and backward slashes are treated as path separators.
 
 ## Library
 
-Source installs include `include/legibility.h`, `liblegibility.a`, and CMake
+Source installs include `include/fs-lint.h`, `libfs-lint.a`, and CMake
 package files. The C API is in preview until `1.0`.
 
 ```cmake
-find_package(legibility 0.2 CONFIG REQUIRED)
-target_link_libraries(your-target PRIVATE legibility::legibility)
+find_package(fs-lint 0.2 CONFIG REQUIRED)
+target_link_libraries(your-target PRIVATE fs-lint::fs-lint)
 ```
 
 ```c
-const legibility_config config = {
-    .new_files_default = LEGIBILITY_NEW_FILES_DENY,
+const fs_lint_config config = {
+    .new_files_default = FS_LINT_NEW_FILES_DENY,
 };
-const legibility_change change = {
+const fs_lint_change change = {
     .path = "src/auth/helper.ts",
-    .kind = LEGIBILITY_CHANGE_ADDED,
+    .kind = FS_LINT_CHANGE_ADDED,
 };
 
-legibility_status status =
-    legibility_check(&config, &change, 1, report_diagnostic, context);
+fs_lint_status status =
+    fs_lint_check(&config, &change, 1, report_diagnostic, context);
 ```
 
 Configuration parsing, Git integration, and agent hooks stay outside the core
@@ -476,22 +476,19 @@ before implementation. Source-code and import analysis stay in `src-lint`.
 
 ## Development
 
-```sh
-./scripts/setup.sh
-```
-
-Installs a managed pre-commit hook that runs shell checks, `clang-format`,
-`clang-tidy`, and debug tests. Both C tools are required; see
-[development setup](.github/CONTRIBUTING.md#development-setup).
+See [development setup](.github/CONTRIBUTING.md#development-setup) for build
+requirements, hooks, and checks.
 
 ## Release
 
-A tag matching the compiled version, such as `v0.2.0`, publishes source and
-binary assets to GitHub. The release workflow also opens a Homebrew tap PR for
-`yowainwright/tap/fs-lint`.
+Development builds report the latest reachable version tag plus the commit count
+and hash. Published source archives carry their version without requiring Git.
 
 Release assets use the `fs-lint-*` prefix. Each asset includes a SHA-256 file;
 binary assets also include Sigstore attestations.
+
+See the [release guide](.github/CONTRIBUTING.md#release) for publishing and Homebrew
+updates.
 
 ## License
 

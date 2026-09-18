@@ -11,20 +11,24 @@ static void fail(const char *message, FILE *stream) {
   exit(EXIT_FAILURE);
 }
 
-static void expect_null_path(cli_output_format format, const char *expected) {
-  FILE *stream = tmpfile();
-  if (stream == NULL) {
-    fputs("could not create output stream\n", stderr);
-    exit(EXIT_FAILURE);
-  }
-  const legibility_diagnostic diagnostic = {
-      .severity = LEGIBILITY_SEVERITY_ERROR,
+static void write_null_path(FILE *stream, cli_output_format format) {
+  const fs_lint_diagnostic diagnostic = {
+      .severity = FS_LINT_SEVERITY_ERROR,
       .code = "config/invalid",
       .path = NULL,
       .message = "could not allocate configuration path",
   };
   cli_output output = {.format = format, .stream = stream};
   cli_report(&diagnostic, &output);
+}
+
+static void expect_null_path(cli_output_format format, const char *expected) {
+  FILE *stream = tmpfile();
+  if (stream == NULL) {
+    fputs("could not create output stream\n", stderr);
+    exit(EXIT_FAILURE);
+  }
+  write_null_path(stream, format);
   if (fseek(stream, 0, SEEK_SET) != 0) {
     fail("could not rewind output stream", stream);
   }

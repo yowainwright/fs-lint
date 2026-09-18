@@ -7,8 +7,8 @@ Thanks for improving `fs-lint`.
 <!-- build requirements and commands matching CMakeLists.txt and .github/workflows/ci.yml -->
 
 You need CMake 3.20 or newer, a C17 compiler, `clang-tidy`, `clang-format`,
-`shfmt`, ShellCheck, and `shellcheck-legibility`. Both shell linters are required
-by pre-commit and CI. CI uses LLVM 18 for both C checks and
+`shfmt`, ShellCheck 0.11 or newer, and `shellcheck-legibility`. Both shell linters are required
+by pre-commit and CI. CI uses LLVM 18 for both C checks, ShellCheck 0.11.0, and
 `shellcheck-legibility` 0.2.1 for shell readability.
 
 Install Ruby on your `PATH` to run the Homebrew release integration test.
@@ -28,8 +28,9 @@ Install the repository's development hooks with:
 ```
 
 This generates managed checks before commits. Pre-commit runs shell checks,
-`clang-format`, `clang-tidy`, and debug tests. Setup refuses to replace existing
-unmanaged hooks and removes older managed push hooks.
+`clang-format`, `fs-lint check --staged`, `clang-tidy`, and debug tests. The built
+fs-lint checks new paths with `--config scripts/.fs-lintrc`; CI uses the same policy.
+Setup refuses to replace existing unmanaged hooks and removes older managed push hooks.
 
 Build and run the complete suite with:
 
@@ -66,6 +67,8 @@ Run all pre-commit checks without making a commit:
 
 Run just the shell checks with `./scripts/setup.sh shell-check`. This is also
 the CI entry point for `shfmt`, ShellCheck, and `shellcheck-legibility`.
+Shell rules live in `scripts/.shellcheckrc` and `scripts/.shellcheck-legibility.toml`;
+C limits in `scripts/.clang-tidy` enforce small functions and low complexity.
 
 CI also compiles with `-Werror` on GCC and Clang and runs AddressSanitizer and
 UndefinedBehaviorSanitizer on Linux.
@@ -98,10 +101,9 @@ the full binary asset matrix. It then opens a
 formula update pull request against `yowainwright/homebrew-tap` using the tap's
 `scripts/new-formula` and `scripts/update-formula` API at the validated tap revision.
 
-Create the release tag on the final merged commit after CI passes. Its version
-must match `project(fs_lint VERSION ...)` in `CMakeLists.txt`; the release build
-checks that the tag matches `fs-lint --version`. Check a local tag's target
-before publishing it, since an existing tag does not advance with the branch.
+Tag the final merged commit after CI passes. The tag supplies the release version;
+no source version bump is needed. Verify the tag points to that commit before
+pushing it.
 
 The repository secret `HOMEBREW_TAP_TOKEN` must have contents and pull request
 write access to `yowainwright/homebrew-tap`. The tap automation scripts must be
@@ -123,7 +125,7 @@ the tap's current default branch. It runs the real formula audit, install, and t
 
 - Keep the policy library dependency-free C17.
 - Keep Git, configuration parsing, filesystem access, and process execution out
-  of `liblegibility`.
+  of `libfs-lint`.
 - Add focused library tests for policy behavior and binary end-to-end tests for
   CLI, configuration, Git, or filesystem behavior.
 - Update documentation when public behavior, configuration, or CLI syntax

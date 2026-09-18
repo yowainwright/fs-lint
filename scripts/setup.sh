@@ -10,6 +10,8 @@ run_suite() {
   cmake -S "$root" -B "$build_dir" -DCMAKE_BUILD_TYPE="$build_type" \
     -DCMAKE_C_FLAGS=-Werror -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
   cmake --build "$build_dir" --parallel
+  printf 'setup: fs-lint staged paths\n'
+  "$build_dir/fs-lint" check --staged --config scripts/.fs-lintrc
   run_clang_tidy
   printf 'setup: %s tests\n' "$name"
   ctest --test-dir "$build_dir" --output-on-failure
@@ -23,6 +25,7 @@ run_clang_tidy() {
     sdk_path="$(xcrun --sdk macosx --show-sdk-path)"
     set -- "$@" --extra-arg=-isysroot "--extra-arg=$sdk_path"
     ;;
+  *) ;;
   esac
   "$clang_tidy" "$@"
 }
@@ -90,12 +93,7 @@ prepare_build_dir() {
   grep -Fxq "CMAKE_HOME_DIRECTORY:INTERNAL=$root" "$cache" || rm -rf "$build_dir"
 }
 
-skip_hooks() {
-  [ "${FS_LINT_SKIP_HOOKS:-0}" = "1" ]
-}
-
 run_pre_commit() {
-  skip_hooks && return 0
   cd "$root"
   require_pre_commit_commands
   printf 'setup: staged diff check\n'
@@ -113,9 +111,9 @@ run_shell_checks() {
   printf 'setup: shell format check\n'
   shfmt -d -i 2 "$@"
   printf 'setup: shellcheck\n'
-  shellcheck "$@"
+  shellcheck --rcfile="$root/scripts/.shellcheckrc" --severity=style "$@"
   printf 'setup: shellcheck-legibility\n'
-  shellcheck-legibility check "$@"
+  shellcheck-legibility check --config "$root/scripts/.shellcheck-legibility.toml" "$@"
 }
 
 run_pre_push() {

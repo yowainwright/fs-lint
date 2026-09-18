@@ -1,8 +1,8 @@
 #include "changes.h"
 #include "cli_output.h"
 #include "config.h"
+#include "fs-lint.h"
 #include "git_environment.h"
-#include "legibility.h"
 
 #include <stdbool.h>
 #include <stdio.h>
@@ -46,10 +46,10 @@ static void print_usage(FILE *stream) {
 static int usage(const cli_arguments *arguments) {
   if (arguments->error[0] != '\0') {
     fprintf(stderr, "fs-lint: %s\n", arguments->error);
-    return LEGIBILITY_STATUS_ERROR;
+    return FS_LINT_STATUS_ERROR;
   }
   print_usage(stderr);
-  return LEGIBILITY_STATUS_ERROR;
+  return FS_LINT_STATUS_ERROR;
 }
 
 static bool wants_help(int argc, char **argv) {
@@ -338,8 +338,8 @@ static bool parse_arguments(int argc, char **argv, cli_arguments *arguments) {
 
 static void report_cli_error(const char *code, const char *path, const char *message,
                              cli_output *output) {
-  const legibility_diagnostic diagnostic = {
-      .severity = LEGIBILITY_SEVERITY_ERROR,
+  const fs_lint_diagnostic diagnostic = {
+      .severity = FS_LINT_SEVERITY_ERROR,
       .code = code,
       .path = path,
       .message = message,
@@ -347,29 +347,27 @@ static void report_cli_error(const char *code, const char *path, const char *mes
   cli_report(&diagnostic, output);
 }
 
-static int run_checks(const cli_arguments *arguments, const legibility_change *changes,
+static bool load_config(const cli_arguments *arguments, cli_config *config) {
+  const bool loaded =
+      arguments->staged
+          ? cli_config_load_staged(arguments->root, arguments->config_path, config)
+          : cli_config_load(arguments->root, arguments->config_path, config);
+  return loaded && cli_config_append_patterns(
+                       config, (const char *const *)arguments->override_patterns,
+                       arguments->override_pattern_count);
+}
+
+static int run_checks(const cli_arguments *arguments, const fs_lint_change *changes,
                       size_t change_count) {
   cli_output output = {.format = arguments->format, .stream = stdout};
   cli_config config;
-  const bool loaded =
-      arguments->staged
-          ? cli_config_load_staged(arguments->root, arguments->config_path, &config)
-          : cli_config_load(arguments->root, arguments->config_path, &config);
-  if (!loaded) {
+  if (!load_config(arguments, &config)) {
     report_cli_error("config/invalid", config.source_path, config.error, &output);
     cli_config_destroy(&config);
-    return LEGIBILITY_STATUS_ERROR;
+    return FS_LINT_STATUS_ERROR;
   }
-  const bool appended = cli_config_append_patterns(
-      &config, (const char *const *)arguments->override_patterns,
-      arguments->override_pattern_count);
-  if (!appended) {
-    report_cli_error("config/invalid", config.source_path, config.error, &output);
-    cli_config_destroy(&config);
-    return LEGIBILITY_STATUS_ERROR;
-  }
-  const legibility_status status =
-      legibility_check(&config.policy, changes, change_count, cli_report, &output);
+  const fs_lint_status status =
+      fs_lint_check(&config.policy, changes, change_count, cli_report, &output);
   cli_config_destroy(&config);
   return (int)status;
 }
@@ -379,15 +377,15 @@ static int validate_config(const cli_arguments *arguments) {
 }
 
 static int check_paths(const cli_arguments *arguments) {
-  legibility_change *changes = calloc(arguments->path_count, sizeof(*changes));
+  fs_lint_change *changes = calloc(arguments->path_count, sizeof(*changes));
   if (changes == NULL) {
     fputs("fs-lint: could not allocate paths\n", stderr);
-    return LEGIBILITY_STATUS_ERROR;
+    return FS_LINT_STATUS_ERROR;
   }
   for (size_t index = 0; index < arguments->path_count; index += 1) {
-    changes[index] = (legibility_change){
+    changes[index] = (fs_lint_change){
         .path = arguments->paths[index],
-        .kind = LEGIBILITY_CHANGE_ADDED,
+        .kind = FS_LINT_CHANGE_ADDED,
     };
   }
   const int status = run_checks(arguments, changes, arguments->path_count);
@@ -417,7 +415,7 @@ static bool prepare_git_environment(const cli_arguments *arguments) {
 
 static int check_batch(const cli_arguments *arguments) {
   if (!prepare_git_environment(arguments)) {
-    return LEGIBILITY_STATUS_ERROR;
+    return FS_LINT_STATUS_ERROR;
   }
   cli_changes changes;
   const bool loaded = load_batch_changes(arguments, &changes);
@@ -425,37 +423,44 @@ static int check_batch(const cli_arguments *arguments) {
     cli_output output = {.format = arguments->format, .stream = stdout};
     report_cli_error("input/invalid", "", changes.error, &output);
     cli_changes_destroy(&changes);
-    return LEGIBILITY_STATUS_ERROR;
+    return FS_LINT_STATUS_ERROR;
   }
   const int status = run_checks(arguments, changes.items, changes.count);
   cli_changes_destroy(&changes);
   return status;
 }
 
-int main(int argc, char **argv) {
+static int run_command(const cli_arguments *arguments) {
+  if (arguments->command == CLI_CONFIG) {
+    return validate_config(arguments);
+  }
+  if (arguments->path_count > 0) {
+    return check_paths(arguments);
+  }
+  return check_batch(arguments);
+}
+
+static int run_cli(int argc, char **argv) {
   cli_arguments arguments;
   initialize_arguments(&arguments);
-  if (wants_help(argc, argv)) {
-    print_usage(stdout);
-    return LEGIBILITY_STATUS_OK;
-  }
-  if (wants_version(argc, argv)) {
-    printf("fs-lint %s\n", FS_LINT_VERSION);
-    return LEGIBILITY_STATUS_OK;
-  }
   if (!parse_arguments(argc, argv, &arguments)) {
     const int status = usage(&arguments);
     destroy_arguments(&arguments);
     return status;
   }
-  int status = LEGIBILITY_STATUS_ERROR;
-  if (arguments.command == CLI_CONFIG) {
-    status = validate_config(&arguments);
-  } else if (arguments.path_count > 0) {
-    status = check_paths(&arguments);
-  } else {
-    status = check_batch(&arguments);
-  }
+  const int status = run_command(&arguments);
   destroy_arguments(&arguments);
   return status;
+}
+
+int main(int argc, char **argv) {
+  if (wants_help(argc, argv)) {
+    print_usage(stdout);
+    return FS_LINT_STATUS_OK;
+  }
+  if (wants_version(argc, argv)) {
+    printf("fs-lint %s\n", FS_LINT_VERSION);
+    return FS_LINT_STATUS_OK;
+  }
+  return run_cli(argc, argv);
 }

@@ -24,6 +24,15 @@ reject_setup() {
   return 0
 }
 
+clear_git_environment() {
+  git_environment="$(git rev-parse --local-env-vars)"
+  while IFS= read -r variable; do
+    unset "$variable"
+  done <<VARIABLES
+$git_environment
+VARIABLES
+}
+
 setup_repo() {
   mkdir -p "$repo/scripts"
   cp "$source_root/scripts/setup.sh" "$repo/scripts/setup.sh"
@@ -42,7 +51,8 @@ assert_initial_install() {
     fail "pre-push hook was not removed"
   hook="$repo/.git/hooks/pre-commit"
   [ -x "$hook" ] || fail "pre-commit is not executable"
-  [ "$(wc -l <"$hook")" -eq 4 ] || fail "pre-commit is not a small wrapper"
+  hook_lines="$(wc -l <"$hook")"
+  [ "$hook_lines" -eq 4 ] || fail "pre-commit is not a small wrapper"
 }
 
 assert_repeat_setup_is_quiet() {
@@ -108,7 +118,45 @@ assert_missing_clang_tidy_is_reported() {
     fail "missing clang-tidy was reported after the build"
 }
 
+prepare_fs_lint_stub() {
+  prepare_preflight_path
+  write_command_stub "$preflight_path/clang-tidy"
+  mkdir -p "$repo/build-hooks-debug"
+  cat >"$repo/build-hooks-debug/fs-lint" <<'SCRIPT'
+#!/bin/sh
+printf '%s\n' "$*" >"${FS_LINT_TEST_LOG:?}"
+exit "${FS_LINT_TEST_STATUS:?}"
+SCRIPT
+  chmod 755 "$repo/build-hooks-debug/fs-lint"
+}
+
+assert_fs_lint_status() {
+  expected_status="${1:?}"
+  status=0
+  setup_output="$(
+    PATH="$preflight_path:$PATH" CLANG_TIDY="$preflight_path/clang-tidy" \
+      FS_LINT_SKIP_HOOKS=1 \
+      FS_LINT_TEST_LOG="$test_root/fs-lint.log" FS_LINT_TEST_STATUS="$expected_status" \
+      "$repo/scripts/setup.sh" pre-commit 2>&1
+  )" || status=$?
+  [ "$status" -eq "$expected_status" ] ||
+    fail "expected fs-lint status $expected_status, got $status: $setup_output"
+  grep -Fxq 'check --staged --config scripts/.fs-lintrc' "$test_root/fs-lint.log" ||
+    fail "staged paths were not checked with the repository config"
+}
+
+assert_fs_lint_blocks_pre_commit() {
+  prepare_fs_lint_stub
+  assert_fs_lint_status 1
+  ! printf '%s' "$setup_output" | grep -Fq 'setup: clang-tidy' ||
+    fail "checks continued after fs-lint failed"
+  assert_fs_lint_status 0
+  printf '%s' "$setup_output" | grep -Fq 'setup: debug tests' ||
+    fail "checks stopped after fs-lint passed"
+}
+
 main() {
+  clear_git_environment
   setup_repo
   assert_initial_install
   assert_repeat_setup_is_quiet
@@ -117,6 +165,7 @@ main() {
   assert_symlink_hook_is_preserved
   assert_custom_hooks_path_is_rejected
   assert_missing_clang_tidy_is_reported
+  assert_fs_lint_blocks_pre_commit
   printf '%s\n' "setup test: passed"
 }
 

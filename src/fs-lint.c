@@ -1,4 +1,4 @@
-#include "legibility.h"
+#include "fs-lint.h"
 
 #include "glob.h"
 
@@ -6,12 +6,12 @@
 #include <string.h>
 
 static void report_error(const char *code, const char *path, const char *message,
-                         legibility_reporter reporter, void *user_data) {
+                         fs_lint_reporter reporter, void *user_data) {
   if (reporter == NULL) {
     return;
   }
-  const legibility_diagnostic diagnostic = {
-      .severity = LEGIBILITY_SEVERITY_ERROR,
+  const fs_lint_diagnostic diagnostic = {
+      .severity = FS_LINT_SEVERITY_ERROR,
       .code = code,
       .path = path,
       .message = message,
@@ -54,21 +54,21 @@ static bool normalized_repository_path(const char *path) {
   return valid_path_segments(path);
 }
 
-static const char *validate_changes(const legibility_change *changes,
+static const char *validate_changes(const fs_lint_change *changes,
                                     size_t change_count) {
   for (size_t index = 0; index < change_count; index += 1) {
     if (changes[index].path == NULL) {
       return "every change requires a path";
     }
-    if (strlen(changes[index].path) > LEGIBILITY_MAX_PATH_LENGTH) {
-      return "change path exceeds LEGIBILITY_MAX_PATH_LENGTH";
+    if (strlen(changes[index].path) > FS_LINT_MAX_PATH_LENGTH) {
+      return "change path exceeds FS_LINT_MAX_PATH_LENGTH";
     }
     if (!normalized_repository_path(changes[index].path)) {
       return "change path must be normalized and repository-relative";
     }
-    const bool valid_kind = changes[index].kind == LEGIBILITY_CHANGE_ADDED ||
-                            changes[index].kind == LEGIBILITY_CHANGE_MODIFIED ||
-                            changes[index].kind == LEGIBILITY_CHANGE_DELETED;
+    const bool valid_kind = changes[index].kind == FS_LINT_CHANGE_ADDED ||
+                            changes[index].kind == FS_LINT_CHANGE_MODIFIED ||
+                            changes[index].kind == FS_LINT_CHANGE_DELETED;
     if (!valid_kind) {
       return "every change requires a valid kind";
     }
@@ -76,24 +76,24 @@ static const char *validate_changes(const legibility_change *changes,
   return NULL;
 }
 
-static const char *validate_patterns(const legibility_config *config) {
+static const char *validate_patterns(const fs_lint_config *config) {
   for (size_t index = 0; index < config->allow_pattern_count; index += 1) {
     if (config->allow_patterns[index] == NULL) {
       return "every allow pattern requires a value";
     }
-    if (strlen(config->allow_patterns[index]) > LEGIBILITY_MAX_PATTERN_LENGTH) {
-      return "allow pattern exceeds LEGIBILITY_MAX_PATTERN_LENGTH";
+    if (strlen(config->allow_patterns[index]) > FS_LINT_MAX_PATTERN_LENGTH) {
+      return "allow pattern exceeds FS_LINT_MAX_PATTERN_LENGTH";
     }
   }
   return NULL;
 }
 
-static const char *validate_config(const legibility_config *config) {
+static const char *validate_config(const fs_lint_config *config) {
   if (config == NULL) {
     return "configuration is required";
   }
-  const bool valid_default = config->new_files_default == LEGIBILITY_NEW_FILES_DENY ||
-                             config->new_files_default == LEGIBILITY_NEW_FILES_ALLOW;
+  const bool valid_default = config->new_files_default == FS_LINT_NEW_FILES_DENY ||
+                             config->new_files_default == FS_LINT_NEW_FILES_ALLOW;
   if (!valid_default) {
     return "new_files_default is invalid";
   }
@@ -105,9 +105,8 @@ static const char *validate_config(const legibility_config *config) {
   return validate_patterns(config);
 }
 
-static const char *validate_input(const legibility_config *config,
-                                  const legibility_change *changes,
-                                  size_t change_count) {
+static const char *validate_input(const fs_lint_config *config,
+                                  const fs_lint_change *changes, size_t change_count) {
   const char *config_error = validate_config(config);
   if (config_error != NULL) {
     return config_error;
@@ -118,27 +117,27 @@ static const char *validate_input(const legibility_config *config,
   return validate_changes(changes, change_count);
 }
 
-static legibility_glob_matcher *create_matcher(const legibility_config *config) {
+static fs_lint_glob_matcher *create_matcher(const fs_lint_config *config) {
   if (config->allow_pattern_count == 0) {
     return NULL;
   }
-  return legibility_glob_matcher_create(config->allow_patterns,
-                                        config->allow_pattern_count);
+  return fs_lint_glob_matcher_create(config->allow_patterns,
+                                     config->allow_pattern_count);
 }
 
-static bool check_changes(legibility_glob_matcher *matcher, bool default_allowed,
-                          const legibility_change *changes, size_t change_count,
-                          legibility_reporter reporter, void *user_data) {
+static bool check_changes(fs_lint_glob_matcher *matcher, bool default_allowed,
+                          const fs_lint_change *changes, size_t change_count,
+                          fs_lint_reporter reporter, void *user_data) {
   bool found_violation = false;
   for (size_t index = 0; index < change_count; index += 1) {
-    const bool added = changes[index].kind == LEGIBILITY_CHANGE_ADDED;
+    const bool added = changes[index].kind == FS_LINT_CHANGE_ADDED;
     if (!added) {
       continue;
     }
     bool allowed = default_allowed;
     if (matcher != NULL) {
       allowed =
-          legibility_glob_matcher_allows(matcher, changes[index].path, default_allowed);
+          fs_lint_glob_matcher_allows(matcher, changes[index].path, default_allowed);
     }
     if (allowed) {
       continue;
@@ -150,39 +149,38 @@ static bool check_changes(legibility_glob_matcher *matcher, bool default_allowed
   return found_violation;
 }
 
-static legibility_status check_denied_additions(const legibility_config *config,
-                                                const legibility_change *changes,
-                                                size_t change_count,
-                                                legibility_reporter reporter,
-                                                void *user_data) {
-  const bool default_allowed = config->new_files_default == LEGIBILITY_NEW_FILES_ALLOW;
-  legibility_glob_matcher *matcher = create_matcher(config);
+static fs_lint_status check_denied_additions(const fs_lint_config *config,
+                                             const fs_lint_change *changes,
+                                             size_t change_count,
+                                             fs_lint_reporter reporter,
+                                             void *user_data) {
+  const bool default_allowed = config->new_files_default == FS_LINT_NEW_FILES_ALLOW;
+  fs_lint_glob_matcher *matcher = create_matcher(config);
   const bool allocation_failed = config->allow_pattern_count > 0 && matcher == NULL;
   if (allocation_failed) {
     report_error("runtime/allocation", "", "could not allocate glob matcher", reporter,
                  user_data);
-    return LEGIBILITY_STATUS_ERROR;
+    return FS_LINT_STATUS_ERROR;
   }
   const bool found = check_changes(matcher, default_allowed, changes, change_count,
                                    reporter, user_data);
-  legibility_glob_matcher_destroy(matcher);
-  return found ? LEGIBILITY_STATUS_VIOLATIONS : LEGIBILITY_STATUS_OK;
+  fs_lint_glob_matcher_destroy(matcher);
+  return found ? FS_LINT_STATUS_VIOLATIONS : FS_LINT_STATUS_OK;
 }
 
-legibility_status legibility_check(const legibility_config *config,
-                                   const legibility_change *changes,
-                                   size_t change_count, legibility_reporter reporter,
-                                   void *user_data) {
+fs_lint_status fs_lint_check(const fs_lint_config *config,
+                             const fs_lint_change *changes, size_t change_count,
+                             fs_lint_reporter reporter, void *user_data) {
   const char *input_error = validate_input(config, changes, change_count);
   if (input_error != NULL) {
     report_error("input/invalid", "", input_error, reporter, user_data);
-    return LEGIBILITY_STATUS_ERROR;
+    return FS_LINT_STATUS_ERROR;
   }
   const bool unconditional_allow =
-      config->new_files_default == LEGIBILITY_NEW_FILES_ALLOW &&
+      config->new_files_default == FS_LINT_NEW_FILES_ALLOW &&
       config->allow_pattern_count == 0;
   if (unconditional_allow || change_count == 0) {
-    return LEGIBILITY_STATUS_OK;
+    return FS_LINT_STATUS_OK;
   }
   return check_denied_additions(config, changes, change_count, reporter, user_data);
 }

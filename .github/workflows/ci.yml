@@ -41,6 +41,7 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
           persist-credentials: false
+          fetch-depth: 0
       - name: Configure
         run: >-
           cmake -S . -B build
@@ -48,6 +49,14 @@ jobs:
           -DCMAKE_C_FLAGS=-Werror
       - name: Build
         run: cmake --build build --parallel
+      - name: Check proposed paths
+        if: >-
+          github.event_name == 'pull_request' ||
+          (github.event_name == 'push' &&
+           github.event.before != '0000000000000000000000000000000000000000')
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: ./build/fs-lint check --config scripts/.fs-lintrc --base "$BASE_SHA"
       - name: Test binary, library, and install
         run: ctest --test-dir build --output-on-failure
 
@@ -67,6 +76,7 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
           persist-credentials: false
+          fetch-depth: 0
       - name: Configure
         run: >-
           cmake -S . -B build-sanitized
@@ -127,8 +137,15 @@ jobs:
       - name: Install shell tools
         run: |
           sudo apt-get update
-          sudo apt-get install --yes shellcheck shfmt
+          sudo apt-get install --yes shfmt
           mkdir -p build-shell-tools
+          archive=build-shell-tools/shellcheck-v0.11.0.linux.x86_64.tar.xz
+          curl --fail --location --retry 3 \
+            https://github.com/koalaman/shellcheck/releases/download/v0.11.0/shellcheck-v0.11.0.linux.x86_64.tar.xz \
+            --output "$archive"
+          echo "8c3be12b05d5c177a04c29e3c78ce89ac86f1595681cab149b65b97c4e227198  $archive" | sha256sum --check --strict
+          tar -xJf "$archive" -C build-shell-tools
+          echo "$PWD/build-shell-tools/shellcheck-v0.11.0" >> "$GITHUB_PATH"
           archive=build-shell-tools/shellcheck-legibility-0.2.1.tar.gz
           curl --fail --location --retry 3 \
             https://github.com/yowainwright/shellcheck_legibility/releases/download/v0.2.1/shellcheck-legibility-0.2.1.tar.gz \

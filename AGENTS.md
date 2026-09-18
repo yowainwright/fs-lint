@@ -20,7 +20,7 @@ fs-lint provides a C17 CLI and policy library for linting file and folder struct
 ## Core Defaults
 
 - Use C17 and CMake 3.20 or newer, as configured in [CMakeLists.txt](CMakeLists.txt). Build outside the source directories with `cmake -S . -B build` and `cmake --build build --parallel`.
-- Keep `liblegibility` dependency-free. Keep Git, configuration parsing, filesystem access, and process execution in the CLI, following the [contributing guide](.github/CONTRIBUTING.md#changes).
+- Keep `libfs-lint` dependency-free. Keep Git, configuration parsing, filesystem access, and process execution in the CLI, following the [contributing guide](.github/CONTRIBUTING.md#changes).
 - Reuse the vendored yyjson and tomlc17 parsers for JSON and TOML configuration. Follow the Vendor Policy below.
 - Use CTest with the existing C tests, CMake e2e fixtures, and shell/Ruby integration tests in `tests/`. Run `ctest --test-dir build --output-on-failure`; prefer e2e proof for CLI and filesystem behavior.
 - Use clang-format and clang-tidy with [scripts/.clang-format](scripts/.clang-format) and [scripts/.clang-tidy](scripts/.clang-tidy). Pass configuration paths explicitly, as [scripts/setup.sh](scripts/setup.sh) and CI do.
