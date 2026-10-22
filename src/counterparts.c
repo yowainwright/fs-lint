@@ -1,7 +1,10 @@
 #include "counterparts.h"
 
+#include "git_environment.h"
+
 #include <errno.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
 
@@ -61,13 +64,19 @@ static bool map_path(char *target, const cli_counterpart *rule, const char *path
   return fits && valid_path(target);
 }
 
+static int compare_paths(const void *first, const void *second) {
+  const fs_lint_change *left = first;
+  const fs_lint_change *right = second;
+  return strcmp(left->path, right->path);
+}
+
 static bool snapshot_contains(const cli_changes *targets, const char *path) {
-  for (size_t index = 0; index < targets->count; index += 1) {
-    if (strcmp(targets->items[index].path, path) == 0) {
-      return true;
-    }
+  if (targets->count == 0) {
+    return false;
   }
-  return false;
+  const fs_lint_change key = {.path = path};
+  return bsearch(&key, targets->items, targets->count, sizeof(*targets->items),
+                 compare_paths) != NULL;
 }
 
 static fs_lint_status stat_target(const char *path) {
@@ -182,6 +191,9 @@ static fs_lint_status check_snapshot(const cli_counterpart_context *context,
     cli_changes_destroy(&targets);
     return FS_LINT_STATUS_ERROR;
   }
+  if (targets.count > 1) {
+    qsort(targets.items, targets.count, sizeof(*targets.items), compare_paths);
+  }
   cli_counterpart_context snapshot = *context;
   snapshot.targets = &targets;
   const fs_lint_status status = check_changes(&snapshot, changes, count);
@@ -199,5 +211,10 @@ fs_lint_status cli_counterparts_check(const cli_counterpart_context *context,
   if (snapshot) {
     return check_snapshot(context, changes, count);
   }
-  return check_changes(context, changes, count);
+  char root[FS_LINT_MAX_PATH_LENGTH + 2];
+  cli_counterpart_context working_tree = *context;
+  if (cli_git_read_work_tree(context->root, root, sizeof(root))) {
+    working_tree.root = root;
+  }
+  return check_changes(&working_tree, changes, count);
 }

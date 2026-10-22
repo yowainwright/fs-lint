@@ -484,6 +484,8 @@ Missing targets and directory targets exit `1`. Allocation, configuration, and
 I/O errors exit `2`. Explicit paths and `--stdin0` check working-tree files;
 `--staged` checks the index and `--base` checks HEAD, so an uncommitted source file
 cannot hide an orphaned committed test. JSON diagnostics use the same error code.
+Working-tree targets are relative to the Git repository containing `--root`, even
+when checking from a subdirectory. Outside Git, targets are relative to `--root`.
 
 Mappings are one-way. Each selected file needs at least one existing counterpart
 among its matching rules, even when an allow pattern permits the test path.

@@ -11,6 +11,8 @@ endfunction()
 
 file(REMOVE_RECURSE "${TEST_ROOT}")
 file(MAKE_DIRECTORY "${TEST_ROOT}/src/core" "${TEST_ROOT}/src/cli/init")
+get_filename_component(test_parent "${TEST_ROOT}" DIRECTORY)
+set(ENV{GIT_CEILING_DIRECTORIES} "${test_parent}")
 set(config [=[
 {"version":1,"newFiles":{"default":"allow"},"counterparts":[
   {"from":"tests/unit/**.test.ts","to":"src/**.ts"}
@@ -164,6 +166,27 @@ git(rev-parse HEAD)
 set(base "${GIT_OUTPUT}")
 
 file(MAKE_DIRECTORY "${TEST_ROOT}/tests/unit/cli" "${TEST_ROOT}/tests/unit/core")
+check(0 --root "${TEST_ROOT}/tests" tests/unit/core/patches.test.ts)
+check(1 --root "${TEST_ROOT}/tests" tests/unit/core/missing.test.ts)
+execute_process(
+  COMMAND "${FS_LINT}" check tests/unit/core/patches.test.ts
+  WORKING_DIRECTORY "${TEST_ROOT}/tests"
+  RESULT_VARIABLE status OUTPUT_VARIABLE output ERROR_VARIABLE error
+)
+if(NOT status EQUAL 0 OR NOT output STREQUAL "" OR NOT error STREQUAL "")
+  message(FATAL_ERROR "subdirectory invocation must find repository counterparts: ${output}${error}")
+endif()
+execute_process(
+  COMMAND printf "%s\\000" "tests/unit/core/patches.test.ts"
+  OUTPUT_FILE "${input}" COMMAND_ERROR_IS_FATAL ANY
+)
+execute_process(
+  COMMAND "${FS_LINT}" check --root "${TEST_ROOT}/tests" --stdin0
+  INPUT_FILE "${input}" RESULT_VARIABLE status OUTPUT_VARIABLE output ERROR_VARIABLE error
+)
+if(NOT status EQUAL 0 OR NOT output STREQUAL "" OR NOT error STREQUAL "")
+  message(FATAL_ERROR "subdirectory stdin must find repository counterparts: ${output}${error}")
+endif()
 file(WRITE "${TEST_ROOT}/tests/unit/cli/pending.test.ts" "export {};\n")
 file(WRITE "${TEST_ROOT}/src/cli/pending.ts" "export {};\n")
 git(add tests/unit/cli/pending.test.ts)
@@ -196,9 +219,10 @@ endif()
 file(WRITE "${TEST_ROOT}/src/core/large.ts" "export {};\n")
 git(add src/core/orphan.ts src/core/large.ts)
 git(rev-parse HEAD:src/core/patches.ts)
+set(bulk_object "${GIT_OUTPUT}")
 set(index_entries "${TEST_ROOT}/bulk-index")
 execute_process(
-  COMMAND awk -v "object=${GIT_OUTPUT}" [=[BEGIN {
+  COMMAND awk -v "object=${bulk_object}" [=[BEGIN {
     for (i = 0; i <= 100000; i++)
       printf "100644 %s\tbulk/%06d.ts\n", object, i
   }]=]
@@ -216,6 +240,25 @@ git(add tests/unit/core/large.test.ts)
 check(0 --staged)
 git(commit -m large-counterpart)
 check(0 --base "${large_base}")
+
+file(WRITE "${TEST_ROOT}/fs-lint.json" [=[
+{"version":1,"newFiles":{"default":"allow"},"counterparts":[
+  {"from":"tests/unit/bulk/**.test.ts","to":"bulk/**.ts"}
+]}
+]=])
+git(add fs-lint.json)
+execute_process(
+  COMMAND awk -v "object=${bulk_object}" [=[BEGIN {
+    for (i = 90001; i <= 100000; i++)
+      printf "100644 %s\ttests/unit/bulk/%06d.test.ts\n", object, i
+  }]=]
+  OUTPUT_FILE "${index_entries}" COMMAND_ERROR_IS_FATAL ANY
+)
+execute_process(
+  COMMAND git -C "${TEST_ROOT}" update-index --index-info
+  INPUT_FILE "${index_entries}" COMMAND_ERROR_IS_FATAL ANY
+)
+check(0 --staged)
 
 set(sha256_root "${TEST_ROOT}/sha256")
 file(MAKE_DIRECTORY "${sha256_root}/src" "${sha256_root}/tests/unit")
