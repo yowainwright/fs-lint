@@ -6,6 +6,8 @@ require "resource_auditor"
 require "simulate_system"
 
 TEMPLATE_PATH = Pathname.new(ARGV.fetch(0))
+require TEMPLATE_PATH.dirname.parent.join("scripts/lib/tap_release").expand_path.to_s
+
 PACKAGE = {
   "class_name" => "FsLint",
   "command" => "fs-lint",
