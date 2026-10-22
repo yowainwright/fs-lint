@@ -21,6 +21,8 @@ bool cli_changes_read_git_staged(const char *root, cli_changes *changes);
 bool cli_changes_read_git_base(const char *root, const char *base,
                                cli_changes *changes);
 
+bool cli_changes_read_git_files(const char *root, bool staged, cli_changes *changes);
+
 void cli_changes_destroy(cli_changes *changes);
 
 #endif

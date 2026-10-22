@@ -14,4 +14,15 @@ typedef struct {
 
 void cli_report(const fs_lint_diagnostic *diagnostic, void *user_data);
 
+static inline void cli_report_error(const char *code, const char *path,
+                                    const char *message, cli_output *output) {
+  const fs_lint_diagnostic diagnostic = {
+      .severity = FS_LINT_SEVERITY_ERROR,
+      .code = code,
+      .path = path,
+      .message = message,
+  };
+  cli_report(&diagnostic, output);
+}
+
 #endif

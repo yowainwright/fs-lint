@@ -1,0 +1,75 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "fs-lint configuration",
+  "description": "Rules for proposed file and folder paths, independent of language. The CLI also checks duplicate keys and byte limits: 1048576 bytes per config, 4096 bytes per pattern, and 262144 total pattern bytes.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "newFiles"],
+  "properties": {
+    "$schema": {
+      "description": "Schema location for editors and agents. fs-lint accepts this metadata without loading it.",
+      "type": "string",
+      "pattern": "^[^\u0000]*$"
+    },
+    "version": {
+      "description": "Configuration format version. Use the integer 1.",
+      "type": "integer",
+      "const": 1
+    },
+    "counterparts": {
+      "description": "One-way file mappings. Each from and to pattern contains exactly one ** capture. Matching paths require an existing target file.",
+      "type": "array",
+      "maxItems": 128,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["from", "to"],
+        "properties": {
+          "from": { "$ref": "#/definitions/counterpartPattern" },
+          "to": { "$ref": "#/definitions/counterpartPattern" }
+        }
+      }
+    },
+    "newFiles": {
+      "description": "Policy for added files and rename destinations. Paths are relative to the repository.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "default": {
+          "description": "Decision when no pattern matches. Omission means deny.",
+          "type": "string",
+          "enum": ["deny", "allow"],
+          "default": "deny"
+        },
+        "allow": {
+          "description": "Ordered path globs. The last matching pattern wins; a leading ! denies. Match the full path with *, **, ?, and {a,b}. **/ matches zero or more directories. Both slash styles are path separators.",
+          "type": "array",
+          "maxItems": 4096,
+          "items": {
+            "type": "string",
+            "maxLength": 4096,
+            "pattern": "^[^\u0000]*$",
+            "examples": ["src/**/{index,utils,types}.*", "!**/*.generated.*"]
+          }
+        }
+      }
+    }
+  },
+  "definitions": {
+    "counterpartPattern": {
+      "type": "string",
+      "minLength": 2,
+      "maxLength": 4096,
+      "pattern": "^[^*?{}]*\\*\\*[^*?{}]*$"
+    }
+  },
+  "examples": [
+    {
+      "$schema": "./fs-lint.schema.json",
+      "version": 1,
+      "newFiles": {
+        "allow": ["src/**/{index,utils,types}.*"]
+      }
+    }
+  ]
+}

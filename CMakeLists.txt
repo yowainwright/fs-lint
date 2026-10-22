@@ -48,6 +48,7 @@ add_executable(
   src/changes.c
   src/cli_output.c
   src/config.c
+  src/counterparts.c
   src/discover.c
   src/git_environment.c
   src/main.c
@@ -160,6 +161,7 @@ if(BUILD_TESTING)
   add_fs_lint_e2e(install)
   add_fs_lint_e2e(json-output)
   add_fs_lint_e2e(policy)
+  add_fs_lint_e2e(counterparts)
   add_fs_lint_e2e(readme-rules)
   add_fs_lint_e2e(stdin0)
   add_fs_lint_e2e(toml-config)

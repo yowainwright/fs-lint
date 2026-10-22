@@ -6,6 +6,7 @@
       "{README,AGENTS}.md",
       "LICENSE",
       "CMakeLists.txt",
+      "fs-lint.schema.json",
       ".gitignore",
       ".github/CODEOWNERS",
       ".github/*.md",
