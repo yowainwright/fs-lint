@@ -7,8 +7,15 @@
 #include <stddef.h>
 
 typedef struct {
+  char *from;
+  char *to;
+} cli_counterpart;
+
+typedef struct {
   fs_lint_config policy;
   char **owned_allow_patterns;
+  cli_counterpart *counterparts;
+  size_t counterpart_count;
   char *source_path;
   char error[256];
 } cli_config;

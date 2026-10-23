@@ -83,6 +83,22 @@ static bool rev_parse(const char *root, const char *option,
   return captured;
 }
 
+bool cli_git_read_work_tree(const char *root, char *path, size_t capacity) {
+  const bool prepared = cli_git_prepare_environment(root);
+  const bool found =
+      prepared && rev_parse(root, "--show-toplevel", NULL, path, capacity);
+  if (!found) {
+    return false;
+  }
+  const size_t length = strlen(path);
+  const bool terminated = length > 1 && path[length - 1] == '\n';
+  if (!terminated) {
+    return false;
+  }
+  path[length - 1] = '\0';
+  return true;
+}
+
 static bool remember_variable(git_environment *environment, const char *name) {
   if (getenv(name) == NULL) {
     return true;

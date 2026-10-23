@@ -125,3 +125,23 @@ set(
   "packages/cli/src/schema.generated.ts: error files/new: new file is not allowed by configuration\n"
 )
 assert_path(packages/cli/src/schema.generated.ts 1 "${generated_denied}")
+
+# Execute the schema's copyable convention example through the real CLI.
+file(READ "${PROJECT_SOURCE_ROOT}/fs-lint.schema.json" schema)
+string(JSON convention_config GET "${schema}" examples 0)
+write_config("${convention_config}")
+foreach(extension c h jl rb swift kt kts java cpp rs go js ts tsx py)
+  assert_path("src/index.${extension}" 0 "")
+  assert_path("src/app/utils.${extension}" 0 "")
+  assert_path("src/app/nested/types.${extension}" 0 "")
+  foreach(path "src/helper.${extension}" "src/app/myindex.${extension}" "lib/index.${extension}")
+    assert_path("${path}" 1 "${path}: error files/new: new file is not allowed by configuration\n")
+  endforeach()
+endforeach()
+assert_path(src/index.test.ts 0 "")
+assert_path(src/index 1 "src/index: error files/new: new file is not allowed by configuration\n")
+
+string(JSON convention_config SET "${convention_config}" newFiles allow 1 "\"!**/*.generated.*\"")
+write_config("${convention_config}")
+assert_path(src/index.generated.swift 1 "src/index.generated.swift: error files/new: new file is not allowed by configuration\n")
+assert_path(src/index.swift 0 "")

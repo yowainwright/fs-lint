@@ -1,6 +1,7 @@
 #include "changes.h"
 #include "cli_output.h"
 #include "config.h"
+#include "counterparts.h"
 #include "fs-lint.h"
 #include "git_environment.h"
 
@@ -336,17 +337,6 @@ static bool parse_arguments(int argc, char **argv, cli_arguments *arguments) {
   return valid_arguments(arguments);
 }
 
-static void report_cli_error(const char *code, const char *path, const char *message,
-                             cli_output *output) {
-  const fs_lint_diagnostic diagnostic = {
-      .severity = FS_LINT_SEVERITY_ERROR,
-      .code = code,
-      .path = path,
-      .message = message,
-  };
-  cli_report(&diagnostic, output);
-}
-
 static bool load_config(const cli_arguments *arguments, cli_config *config) {
   const bool loaded =
       arguments->staged
@@ -357,17 +347,46 @@ static bool load_config(const cli_arguments *arguments, cli_config *config) {
                        arguments->override_pattern_count);
 }
 
+static cli_counterpart_context counterpart_context(const cli_arguments *arguments,
+                                                   const cli_config *config,
+                                                   cli_output *output) {
+  const bool committed = arguments->base != NULL;
+  const cli_counterpart_context context = {
+      .config = config,
+      .root = arguments->root,
+      .output = output,
+      .staged = arguments->staged,
+      .committed = committed,
+  };
+  return context;
+}
+
+static fs_lint_status check_policies(const cli_arguments *arguments,
+                                     const cli_config *config,
+                                     const fs_lint_change *changes, size_t count) {
+  cli_output output = {.format = arguments->format, .stream = stdout};
+  const fs_lint_status policy =
+      fs_lint_check(&config->policy, changes, count, cli_report, &output);
+  if (policy == FS_LINT_STATUS_ERROR) {
+    return policy;
+  }
+  const cli_counterpart_context context =
+      counterpart_context(arguments, config, &output);
+  const fs_lint_status counterpart = cli_counterparts_check(&context, changes, count);
+  return counterpart > policy ? counterpart : policy;
+}
+
 static int run_checks(const cli_arguments *arguments, const fs_lint_change *changes,
                       size_t change_count) {
   cli_output output = {.format = arguments->format, .stream = stdout};
   cli_config config;
   if (!load_config(arguments, &config)) {
-    report_cli_error("config/invalid", config.source_path, config.error, &output);
+    cli_report_error("config/invalid", config.source_path, config.error, &output);
     cli_config_destroy(&config);
     return FS_LINT_STATUS_ERROR;
   }
   const fs_lint_status status =
-      fs_lint_check(&config.policy, changes, change_count, cli_report, &output);
+      check_policies(arguments, &config, changes, change_count);
   cli_config_destroy(&config);
   return (int)status;
 }
@@ -408,7 +427,7 @@ static bool prepare_git_environment(const cli_arguments *arguments) {
     return true;
   }
   cli_output output = {.format = arguments->format, .stream = stdout};
-  report_cli_error("input/invalid", "", "could not prepare Git repository environment",
+  cli_report_error("input/invalid", "", "could not prepare Git repository environment",
                    &output);
   return false;
 }
@@ -421,7 +440,7 @@ static int check_batch(const cli_arguments *arguments) {
   const bool loaded = load_batch_changes(arguments, &changes);
   if (!loaded) {
     cli_output output = {.format = arguments->format, .stream = stdout};
-    report_cli_error("input/invalid", "", changes.error, &output);
+    cli_report_error("input/invalid", "", changes.error, &output);
     cli_changes_destroy(&changes);
     return FS_LINT_STATUS_ERROR;
   }

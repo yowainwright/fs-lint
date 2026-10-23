@@ -33,6 +33,22 @@ assert_invalid_config(
   "duplicate configuration key: version"
 )
 
+foreach(schema_value null 1 true "[]" "{}" "\"schema\\u0000.json\"")
+  assert_invalid_config(
+    invalid-schema
+    fs-lint.json
+    "{\"$schema\":${schema_value},\"version\":1,\"newFiles\":{}}"
+    "schema must be a string without embedded NUL bytes"
+  )
+endforeach()
+
+assert_invalid_config(
+  duplicate-schema
+  fs-lint.json
+  "{\"$schema\":\"a.json\",\"$schema\":\"b.json\",\"version\":1,\"newFiles\":{}}"
+  "duplicate configuration key: .schema"
+)
+
 assert_invalid_config(
   embedded-nul-default
   fs-lint.json

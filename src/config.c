@@ -1,4 +1,5 @@
 #include "config.h"
+#include "counterparts.h"
 
 #include "discover.h"
 #include "tomlc17.h"
@@ -323,8 +324,13 @@ static bool validate_keys(yyjson_val *object, expected_key *keys, size_t key_cou
 }
 
 static bool validate_root_keys(yyjson_val *root, cli_config *config) {
-  expected_key keys[] = {{"version", false}, {"newFiles", false}};
-  return validate_keys(root, keys, 2, config);
+  expected_key keys[] = {
+      {"version", false},
+      {"newFiles", false},
+      {"$schema", false},
+      {"counterparts", false},
+  };
+  return validate_keys(root, keys, 4, config);
 }
 
 static bool validate_new_file_keys(yyjson_val *new_files, cli_config *config) {
@@ -337,6 +343,18 @@ static bool read_version(yyjson_val *root, cli_config *config) {
   const bool supported = yyjson_is_uint(version) && yyjson_get_uint(version) == 1;
   if (!supported) {
     return fail(config, "version must be 1");
+  }
+  return true;
+}
+
+static bool read_schema(yyjson_val *root, cli_config *config) {
+  yyjson_val *schema = yyjson_obj_get(root, "$schema");
+  if (schema == NULL) {
+    return true;
+  }
+  const bool invalid_schema = !yyjson_is_str(schema) || has_embedded_nul(schema);
+  if (invalid_schema) {
+    return fail(config, "$schema must be a string without embedded NUL bytes");
   }
   return true;
 }
@@ -471,6 +489,88 @@ static bool read_new_files(yyjson_val *root, cli_config *config) {
   return read_default(new_files, config) && read_allow(new_files, config);
 }
 
+static bool allocate_counterparts(size_t count, cli_config *config) {
+  if (count > 128) {
+    return fail(config, "counterparts exceeds 128 rules");
+  }
+  if (count == 0) {
+    return true;
+  }
+  config->counterparts = calloc(count, sizeof(*config->counterparts));
+  if (config->counterparts == NULL) {
+    return fail(config, "could not allocate counterpart rules");
+  }
+  config->counterpart_count = count;
+  return true;
+}
+
+static char *copy_mapping_pattern(const char *pattern) {
+  char *copy = copy_string(pattern);
+  if (copy == NULL) {
+    return NULL;
+  }
+  for (char *cursor = copy; *cursor != '\0'; cursor += 1) {
+    if (*cursor == '\\') {
+      *cursor = '/';
+    }
+  }
+  return copy;
+}
+
+static bool copy_counterpart(const char *from, const char *to, size_t index,
+                             cli_config *config) {
+  const bool valid_from = cli_counterpart_pattern_valid(from);
+  const bool valid_to = cli_counterpart_pattern_valid(to);
+  const bool invalid_pattern = !valid_from || !valid_to;
+  if (invalid_pattern) {
+    return fail(config,
+                "counterpart patterns require one ** and normalized relative paths");
+  }
+  cli_counterpart *rule = &config->counterparts[index];
+  rule->from = copy_mapping_pattern(from);
+  rule->to = copy_mapping_pattern(to);
+  const bool copied = rule->from != NULL && rule->to != NULL;
+  return copied || fail(config, "could not allocate counterpart patterns");
+}
+
+static bool read_counterpart(yyjson_val *value, size_t index, cli_config *config) {
+  if (!yyjson_is_obj(value)) {
+    return fail(config, "counterparts must contain objects with from and to patterns");
+  }
+  expected_key keys[] = {{"from", false}, {"to", false}};
+  if (!validate_keys(value, keys, 2, config)) {
+    return false;
+  }
+  yyjson_val *from = yyjson_obj_get(value, "from");
+  yyjson_val *to = yyjson_obj_get(value, "to");
+  const bool strings = yyjson_is_str(from) && yyjson_is_str(to);
+  const bool embedded_nul = strings && (has_embedded_nul(from) || has_embedded_nul(to));
+  const bool invalid_text = !strings || embedded_nul;
+  if (invalid_text) {
+    return fail(config, "counterpart from and to must be strings without NUL bytes");
+  }
+  return copy_counterpart(yyjson_get_str(from), yyjson_get_str(to), index, config);
+}
+
+static bool read_counterparts(yyjson_val *root, cli_config *config) {
+  yyjson_val *rules = yyjson_obj_get(root, "counterparts");
+  if (rules == NULL) {
+    return true;
+  }
+  if (!yyjson_is_arr(rules)) {
+    return fail(config, "counterparts must be an array");
+  }
+  if (!allocate_counterparts(yyjson_arr_size(rules), config)) {
+    return false;
+  }
+  for (size_t index = 0; index < config->counterpart_count; index += 1) {
+    if (!read_counterpart(yyjson_arr_get(rules, index), index, config)) {
+      return false;
+    }
+  }
+  return true;
+}
+
 static bool parse_json_document(yyjson_doc *document, cli_config *config) {
   yyjson_val *root = yyjson_doc_get_root(document);
   if (!yyjson_is_obj(root)) {
@@ -479,7 +579,8 @@ static bool parse_json_document(yyjson_doc *document, cli_config *config) {
   if (!validate_root_keys(root, config)) {
     return false;
   }
-  return read_version(root, config) && read_new_files(root, config);
+  return read_schema(root, config) && read_version(root, config) &&
+         read_new_files(root, config) && read_counterparts(root, config);
 }
 
 static bool validate_toml_keys(toml_datum_t table, expected_key *keys, size_t key_count,
@@ -501,8 +602,9 @@ static bool validate_toml_keys(toml_datum_t table, expected_key *keys, size_t ke
 }
 
 static bool validate_toml_root_keys(toml_datum_t root, cli_config *config) {
-  expected_key keys[] = {{"version", false}, {"newFiles", false}};
-  return validate_toml_keys(root, keys, 2, config);
+  expected_key keys[] = {
+      {"version", false}, {"newFiles", false}, {"counterparts", false}};
+  return validate_toml_keys(root, keys, 3, config);
 }
 
 static bool validate_toml_new_file_keys(toml_datum_t new_files, cli_config *config) {
@@ -594,6 +696,50 @@ static bool read_toml_new_files(toml_datum_t root, cli_config *config) {
   return read_toml_default(new_files, config) && read_toml_allow(new_files, config);
 }
 
+static bool valid_toml_mapping_string(toml_datum_t value) {
+  if (value.type != TOML_STRING) {
+    return false;
+  }
+  const bool embedded_nul =
+      has_embedded_nul_bytes(value.u.str.ptr, (size_t)value.u.str.len);
+  return !embedded_nul;
+}
+
+static bool read_toml_counterpart(toml_datum_t table, size_t index,
+                                  cli_config *config) {
+  expected_key keys[] = {{"from", false}, {"to", false}};
+  if (!validate_toml_keys(table, keys, 2, config)) {
+    return false;
+  }
+  const toml_datum_t from = toml_get(table, "from");
+  const toml_datum_t to = toml_get(table, "to");
+  const bool strings = valid_toml_mapping_string(from) && valid_toml_mapping_string(to);
+  if (!strings) {
+    return fail(config, "counterpart from and to must be strings without NUL bytes");
+  }
+  return copy_counterpart(from.u.s, to.u.s, index, config);
+}
+
+static bool read_toml_counterparts(toml_datum_t root, cli_config *config) {
+  const toml_datum_t rules = toml_get(root, "counterparts");
+  if (rules.type == TOML_UNKNOWN) {
+    return true;
+  }
+  const bool array = rules.type == TOML_ARRAY && rules.u.arr.size >= 0;
+  if (!array) {
+    return fail(config, "counterparts must be an array");
+  }
+  if (!allocate_counterparts((size_t)rules.u.arr.size, config)) {
+    return false;
+  }
+  for (size_t index = 0; index < config->counterpart_count; index += 1) {
+    if (!read_toml_counterpart(rules.u.arr.elem[index], index, config)) {
+      return false;
+    }
+  }
+  return true;
+}
+
 static bool parse_json_data(const char *data, size_t length, cli_config *config) {
   yyjson_doc *document = load_document_data(data, length, config);
   if (document == NULL) {
@@ -615,7 +761,8 @@ static bool parse_toml_data(const char *path, const char *data, size_t length,
   bool valid = validate_toml_root_keys(document.toptab, config);
   if (valid) {
     valid = read_toml_version(document.toptab, config) &&
-            read_toml_new_files(document.toptab, config);
+            read_toml_new_files(document.toptab, config) &&
+            read_toml_counterparts(document.toptab, config);
   }
   toml_free(document);
   return valid;
@@ -795,6 +942,11 @@ void cli_config_destroy(cli_config *config) {
     free(config->owned_allow_patterns[index]);
   }
   free(config->owned_allow_patterns);
+  for (size_t index = 0; index < config->counterpart_count; index += 1) {
+    free(config->counterparts[index].from);
+    free(config->counterparts[index].to);
+  }
+  free(config->counterparts);
   free(config->source_path);
   memset(config, 0, sizeof(*config));
 }

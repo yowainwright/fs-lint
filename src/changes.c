@@ -3,6 +3,7 @@
 #include "changes.h"
 
 #include <errno.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/types.h>
@@ -12,6 +13,8 @@
 #define CLI_MAX_CHANGES 100000
 
 typedef enum { PATH_READY, PATH_END, PATH_ERROR } path_status;
+
+typedef bool (*git_reader)(FILE *stream, cli_changes *changes);
 
 typedef struct {
   FILE *error_stream;
@@ -70,10 +73,11 @@ static path_status read_path(FILE *stream, char **path, cli_changes *changes) {
   return finish_stream(stream, length, changes);
 }
 
-static bool grow_changes(cli_changes *changes) {
-  const size_t doubled = changes->capacity * 2;
+static bool grow_changes(cli_changes *changes, size_t limit) {
+  const bool exceeds_limit = changes->capacity > limit / 2;
+  const size_t doubled = exceeds_limit ? limit : changes->capacity * 2;
   size_t capacity = changes->capacity == 0 ? 16 : doubled;
-  capacity = capacity > CLI_MAX_CHANGES ? CLI_MAX_CHANGES : capacity;
+  capacity = capacity > limit ? limit : capacity;
   fs_lint_change *items = realloc(changes->items, capacity * sizeof(*items));
   if (items == NULL) {
     return fail(changes, "could not allocate changes");
@@ -83,12 +87,13 @@ static bool grow_changes(cli_changes *changes) {
   return true;
 }
 
-static bool append_path(cli_changes *changes, char *path) {
-  if (changes->count == CLI_MAX_CHANGES) {
+static bool append_path(cli_changes *changes, char *path, size_t limit) {
+  if (changes->count == limit) {
     return fail(changes, "change count exceeds CLI_MAX_CHANGES");
   }
   const bool needs_capacity = changes->count == changes->capacity;
-  if (needs_capacity && !grow_changes(changes)) {
+  const bool allocation_failed = needs_capacity && !grow_changes(changes, limit);
+  if (allocation_failed) {
     return false;
   }
   changes->items[changes->count] = (fs_lint_change){
@@ -110,7 +115,7 @@ bool cli_changes_read_nul(FILE *stream, cli_changes *changes) {
     if (status == PATH_ERROR) {
       return false;
     }
-    if (!append_path(changes, path)) {
+    if (!append_path(changes, path, CLI_MAX_CHANGES)) {
       free(path);
       return false;
     }
@@ -191,13 +196,13 @@ static bool report_git_failure(FILE *error_stream, cli_changes *changes) {
   return false;
 }
 
-static bool read_git_output(int descriptor, cli_changes *changes) {
+static bool read_git_output(int descriptor, cli_changes *changes, git_reader reader) {
   FILE *output = fdopen(descriptor, "rb");
   if (output == NULL) {
     close(descriptor);
     return fail(changes, "could not read git diff output");
   }
-  const bool parsed = cli_changes_read_nul(output, changes);
+  const bool parsed = reader(output, changes);
   fclose(output);
   return parsed;
 }
@@ -215,13 +220,13 @@ static bool finish_git(git_process *process, bool parsed, cli_changes *changes) 
 }
 
 static bool read_git(const char *root, const char *const arguments[],
-                     cli_changes *changes) {
+                     cli_changes *changes, git_reader reader) {
   memset(changes, 0, sizeof(*changes));
   git_process process;
   if (!launch_git(root, arguments, &process, changes)) {
     return false;
   }
-  const bool parsed = read_git_output(process.output[0], changes);
+  const bool parsed = read_git_output(process.output[0], changes, reader);
   return finish_git(&process, parsed, changes);
 }
 
@@ -239,7 +244,7 @@ bool cli_changes_read_git_staged(const char *root, cli_changes *changes) {
       "--",
       NULL,
   };
-  return read_git(root, arguments, changes);
+  return read_git(root, arguments, changes, cli_changes_read_nul);
 }
 
 bool cli_changes_read_git_base(const char *root, const char *base,
@@ -259,7 +264,112 @@ bool cli_changes_read_git_base(const char *root, const char *base,
       "--",
       NULL,
   };
-  return read_git(root, arguments, changes);
+  return read_git(root, arguments, changes, cli_changes_read_nul);
+}
+
+static path_status read_file_mode(FILE *stream, bool *file, cli_changes *changes) {
+  char *header = NULL;
+  const path_status status = read_path(stream, &header, changes);
+  if (status == PATH_READY) {
+    const bool regular = strncmp(header, ":000000 100", 11) == 0;
+    const bool symlink = strncmp(header, ":000000 120000", 14) == 0;
+    *file = regular || symlink;
+    free(header);
+  }
+  return status;
+}
+
+static bool read_file_path(FILE *stream, bool file, cli_changes *changes) {
+  char *path = NULL;
+  const path_status status = read_path(stream, &path, changes);
+  if (status == PATH_END) {
+    return fail(changes, "Git file entry is missing its path");
+  }
+  if (status == PATH_ERROR) {
+    return false;
+  }
+  const size_t limit = SIZE_MAX / sizeof(*changes->items);
+  const bool appended = file && append_path(changes, path, limit);
+  if (appended) {
+    return true;
+  }
+  free(path);
+  return !file;
+}
+
+static bool read_files(FILE *stream, cli_changes *changes) {
+  while (true) {
+    bool file = false;
+    const path_status status = read_file_mode(stream, &file, changes);
+    if (status == PATH_END) {
+      return true;
+    }
+    const bool invalid = status == PATH_ERROR || !read_file_path(stream, file, changes);
+    if (invalid) {
+      return false;
+    }
+  }
+}
+
+static const char *empty_tree_oid(const char *format) {
+  if (strcmp(format, "sha1\n") == 0) {
+    return "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
+  }
+  if (strcmp(format, "sha256\n") == 0) {
+    return "6ef19b41225c5369f1c104d45d8d85efa9b057b53b14b4b9b939dd74decc5321";
+  }
+  return NULL;
+}
+
+static bool read_empty_tree(FILE *stream, cli_changes *changes) {
+  char format[8];
+  if (fgets(format, sizeof(format), stream) == NULL) {
+    return fail(changes, "could not read Git object format");
+  }
+  const char *tree = empty_tree_oid(format);
+  if (tree == NULL) {
+    return fail(changes, "unsupported Git object format");
+  }
+  char *path = strdup(tree);
+  const bool appended = path != NULL && append_path(changes, path, CLI_MAX_CHANGES);
+  if (!appended) {
+    free(path);
+    return fail(changes, "could not allocate Git empty tree identifier");
+  }
+  return true;
+}
+
+static bool read_git_files(const char *root, bool staged, const char *tree,
+                           cli_changes *changes) {
+  const char *const arguments[] = {
+      "git",
+      "diff",
+      "--raw",
+      "-z",
+      "--no-renames",
+      "--no-relative",
+      "--ignore-submodules=none",
+      "--ita-invisible-in-index",
+      tree,
+      staged ? "--cached" : "HEAD",
+      "--",
+      NULL,
+  };
+  return read_git(root, arguments, changes, read_files);
+}
+
+bool cli_changes_read_git_files(const char *root, bool staged, cli_changes *changes) {
+  const char *const arguments[] = {"git", "rev-parse", "--show-object-format", NULL};
+  cli_changes format;
+  if (!read_git(root, arguments, &format, read_empty_tree)) {
+    memset(changes, 0, sizeof(*changes));
+    fail(changes, format.error);
+    cli_changes_destroy(&format);
+    return false;
+  }
+  const bool loaded = read_git_files(root, staged, format.items[0].path, changes);
+  cli_changes_destroy(&format);
+  return loaded;
 }
 
 void cli_changes_destroy(cli_changes *changes) {

@@ -373,6 +373,44 @@ Exits with code `0`. Use `fs-lint --version` to print the installed version.
 
 ## Configuration
 
+### One convention, any extension
+
+Choose the filenames your project uses, then allow them with one glob:
+
+```json
+{
+  "version": 1,
+  "newFiles": {
+    "allow": ["src/**/{index,utils,types}.*"]
+  }
+}
+```
+
+This allows `src/index.c`, `src/math/utils.jl`, and `src/app/types.rb`.
+The same rule works with `.swift`, `.kt`, `.kts`, `.java`, or any extension.
+It rejects other basenames, such as `src/helper.rb`. Choose names that fit your
+project; fs-lint does not prescribe language conventions. `.*` also allows
+multiple suffixes, such as `index.test.ts`; use `!**/*.generated.*` afterward
+if generated files should be excluded.
+
+### Editor and agent schema
+
+The [JSON Schema](fs-lint.schema.json) describes the fields, defaults, and glob
+syntax, with a complete example for humans and agents. Save it beside your
+`fs-lint.json` or `.fs-lintrc`, then add this top-level field:
+
+```json
+"$schema": "./fs-lint.schema.json"
+```
+
+Editors that support [JSON Schema associations](https://code.visualstudio.com/docs/languages/json#_json-schemas-and-settings)
+can provide completion and validation. fs-lint accepts `$schema` as JSON metadata
+and does not load it. Run `fs-lint` for the CLI's full validation, including
+duplicate keys and byte limits. The schema describes JSON configuration;
+TOML uses the same policy fields without `$schema`.
+
+### JSON and TOML
+
 Use `.fs-lintrc` or `fs-lint.json` for JSON:
 
 ```jsonc
@@ -416,6 +454,57 @@ Allow patterns are evaluated in order. Positive patterns allow a path. Patterns
 that start with `!` deny it again.
 
 ---
+
+## Counterpart files
+
+Require each supplied unit test path to map to a source file:
+
+```json
+{
+  "version": 1,
+  "newFiles": { "default": "allow" },
+  "counterparts": [
+    { "from": "tests/unit/**.test.ts", "to": "src/**.ts" }
+  ]
+}
+```
+
+Each pattern has exactly one `**`, which captures the relative path, including
+directories. Other wildcards are not supported in counterpart mappings. Patterns
+must be normalized repository-relative paths. Captured paths cannot escape the root.
+
+`tests/unit/core/patches.test.ts` requires `src/core/patches.ts`.
+`tests/unit/core/patches-pnpm.test.ts` fails unless `src/core/patches-pnpm.ts` exists:
+
+```text
+tests/unit/core/patches-pnpm.test.ts: error files/counterpart: expected counterpart file: src/core/patches-pnpm.ts
+```
+
+Missing targets and directory targets exit `1`. Allocation, configuration, and
+I/O errors exit `2`. Explicit paths and `--stdin0` check working-tree files;
+`--staged` checks the index and `--base` checks HEAD, so an uncommitted source file
+cannot hide an orphaned committed test. JSON diagnostics use the same error code.
+Working-tree targets are relative to the Git repository containing `--root`, even
+when checking from a subdirectory. Outside Git, targets are relative to `--root`.
+
+Mappings are one-way. Each selected file needs at least one existing counterpart
+among its matching rules, even when an allow pattern permits the test path.
+Use additional mappings for source roots or extensions such as `.tsx` and `.sh`.
+Text surrounding `**` matches literally. Omitting `counterparts` preserves existing behavior.
+The CLI checks supplied paths; it does not scan the repository automatically.
+The policy library remains independent of filesystem and Git access.
+
+TOML uses the same fields:
+
+```toml
+version = 1
+[newFiles]
+default = "allow"
+
+[[counterparts]]
+from = "tests/unit/**.test.ts"
+to = "src/**.ts"
+```
 
 ## Glob Syntax
 
