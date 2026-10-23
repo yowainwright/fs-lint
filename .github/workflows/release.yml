@@ -37,7 +37,7 @@ jobs:
             -o "release/$package.tar.gz" "$GITHUB_SHA"
           cd release
           cmake -E sha256sum "$package.tar.gz" > "$package.tar.gz.sha256"
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: fs-lint-source
           path: |
@@ -110,7 +110,7 @@ jobs:
           BUNDLE_PATH: ${{ steps.attest.outputs.bundle-path }}
           PACKAGE_NAME: ${{ steps.package.outputs.name }}
         run: cp "$BUNDLE_PATH" "release/$PACKAGE_NAME.sigstore.json"
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: ${{ steps.package.outputs.name }}
           path: |
